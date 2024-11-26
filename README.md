@@ -11,7 +11,7 @@
 </div>
 <br/>
 
-## Quick Start
+## Quick start
 
 Morpho Markets indexer is built using [Ponder](https://ponder.sh/).
 
@@ -34,3 +34,7 @@ yarn codegen
 ```bash
 yarn start
 ```
+
+## Reading the data
+
+While the indexer is running, it will expose a GraphQL server at http://localhost:42069
