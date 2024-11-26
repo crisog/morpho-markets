@@ -1,7 +1,10 @@
 import { onchainTable } from "@ponder/core";
 
-export const swapEvent = onchainTable("swapEvent", (t) => ({
+export const createMarketEvent = onchainTable("createMarketEvent", (t) => ({
   id: t.text().primaryKey(),
-  recipient: t.hex().notNull(),
-  payer: t.hex().notNull(),
+  loanToken: t.text().notNull(),
+  collateralToken: t.text().notNull(),
+  oracle: t.text().notNull(),
+  irm: t.text().notNull(),
+  lltv: t.bigint().notNull(),
 }));
