@@ -1,4 +1,4 @@
-import { Position, PositionMetrics } from "./types";
+import { BlockInfo, Position, PositionMetrics } from "./types";
 
 export const CONSTANTS = {
   ORACLE_PRICE_SCALE: BigInt(1e36),
@@ -7,6 +7,11 @@ export const CONSTANTS = {
   HIGH_RISK_THRESHOLD: 0.98,
   MAX_LIQUIDATION_INCENTIVE_FACTOR: 1.15,
 } as const;
+
+export const formatTimestamp = (timestamp: bigint): string => {
+  const date = new Date(Number(timestamp) * 1000);
+  return date.toLocaleString("en-US", { timeZone: "America/New_York" });
+};
 
 export const calculatePositionMetrics = (
   position: Position
@@ -43,9 +48,14 @@ export const calculateLiquidationIncentive = (
 
 export const logPositionDetails = (
   position: Position,
-  metrics: PositionMetrics
+  metrics: PositionMetrics,
+  blockInfo: BlockInfo
 ) => {
-  console.log("Position details:");
+  console.log(
+    `Position details at block ${blockInfo.blockNumber} (${formatTimestamp(
+      blockInfo.timestamp
+    )}):`
+  );
   console.log({
     borrowShares: position.borrowShares.toString(),
     borrowed: metrics.borrowed.toString(),
@@ -59,9 +69,14 @@ export const logPositionDetails = (
 
 export const logHealthMetrics = (
   metrics: PositionMetrics,
-  position: Position
+  position: Position,
+  blockInfo: BlockInfo
 ) => {
-  console.log("Position Health Metrics:");
+  console.log(
+    `Position Health Metrics at block ${
+      blockInfo.blockNumber
+    } (${formatTimestamp(blockInfo.timestamp)}):`
+  );
   console.log({
     collateralValue: metrics.collateralValue.toString(),
     borrowedValue: metrics.borrowed.toString(),
@@ -74,13 +89,14 @@ export const logHealthMetrics = (
 export const logLiquidationAlert = (
   position: Position,
   metrics: PositionMetrics,
-  liquidationIncentiveFactor: number
+  liquidationIncentiveFactor: number,
+  blockInfo: BlockInfo
 ) => {
-  const possibleSeizure =
-    (metrics.borrowed * BigInt(Math.floor(liquidationIncentiveFactor * 1e18))) /
-    CONSTANTS.WAD;
-
-  console.log("🚨 LIQUIDATION ALERT 🚨");
+  console.log(
+    `🚨 LIQUIDATION ALERT at block ${blockInfo.blockNumber} (${formatTimestamp(
+      blockInfo.timestamp
+    )}) 🚨`
+  );
   console.log({
     marketId: position.marketId,
     borrower: position.borrower,
@@ -88,7 +104,10 @@ export const logLiquidationAlert = (
     maxLTV: `${metrics.maxLtvPercentage.toFixed(2)}%`,
     borrowed: metrics.borrowed.toString(),
     collateral: position.collateral.toString(),
-    possibleSeizure: possibleSeizure.toString(),
+    possibleSeizure:
+      (metrics.borrowed *
+        BigInt(Math.floor(liquidationIncentiveFactor * 1e18))) /
+      CONSTANTS.WAD,
     liquidationIncentive: `${((liquidationIncentiveFactor - 1) * 100).toFixed(
       2
     )}%`,
@@ -99,7 +118,8 @@ export const logRiskWarning = (
   type: "HIGH" | "MEDIUM",
   position: Position,
   metrics: PositionMetrics,
-  ltvRatio: number
+  ltvRatio: number,
+  blockInfo: BlockInfo
 ) => {
   const baseInfo = {
     marketId: position.marketId,
@@ -107,16 +127,26 @@ export const logRiskWarning = (
     currentLTV: `${metrics.ltvPercentage.toFixed(2)}%`,
     maxLTV: `${metrics.maxLtvPercentage.toFixed(2)}%`,
     buffer: `${(metrics.maxLtvPercentage - metrics.ltvPercentage).toFixed(2)}%`,
+    block: blockInfo.blockNumber,
+    timestamp: formatTimestamp(blockInfo.timestamp),
   };
 
   if (type === "HIGH") {
-    console.log("⚠️ HIGH RISK POSITION ⚠️");
+    console.log(
+      `⚠️ HIGH RISK POSITION at block ${
+        blockInfo.blockNumber
+      } (${formatTimestamp(blockInfo.timestamp)}) ⚠️`
+    );
     console.log({
       ...baseInfo,
       riskLevel: `${(ltvRatio * 100).toFixed(2)}%`,
     });
   } else {
-    console.log("📊 RISK WARNING");
+    console.log(
+      `📊 RISK WARNING at block ${blockInfo.blockNumber} (${formatTimestamp(
+        blockInfo.timestamp
+      )})`
+    );
     console.log(baseInfo);
   }
 };

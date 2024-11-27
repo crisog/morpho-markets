@@ -27,12 +27,12 @@ export default createConfig({
   blocks: {
     OracleUpdates: {
       network: "mainnet",
-      startBlock: 21279706,
+      startBlock: 21280448,
       interval: 1,
     },
     Liquidations: {
       network: "mainnet",
-      startBlock: 21279706,
+      startBlock: 21280448,
       interval: 1,
     },
   },

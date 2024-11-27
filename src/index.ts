@@ -41,24 +41,34 @@ ponder.on("Liquidations:block", async ({ event, context }) => {
       )
     );
 
+  const blockInfo = {
+    timestamp: event.block.timestamp,
+    blockNumber: event.block.number,
+  };
+
   for (const position of riskPositions) {
     const metrics = calculatePositionMetrics(position);
     const ltvRatio = metrics.ltvPercentage / metrics.maxLtvPercentage;
 
-    logPositionDetails(position, metrics);
+    logPositionDetails(position, metrics, blockInfo);
 
     if (!metrics.isHealthy) {
       const liquidationIncentiveFactor = calculateLiquidationIncentive(
         metrics.maxLtvPercentage
       );
-      logLiquidationAlert(position, metrics, liquidationIncentiveFactor);
+      logLiquidationAlert(
+        position,
+        metrics,
+        liquidationIncentiveFactor,
+        blockInfo
+      );
     } else if (ltvRatio >= CONSTANTS.HIGH_RISK_THRESHOLD) {
-      logRiskWarning("HIGH", position, metrics, ltvRatio);
+      logRiskWarning("HIGH", position, metrics, ltvRatio, blockInfo);
     } else if (ltvRatio >= CONSTANTS.WARNING_THRESHOLD) {
-      logRiskWarning("MEDIUM", position, metrics, ltvRatio);
+      logRiskWarning("MEDIUM", position, metrics, ltvRatio, blockInfo);
     }
 
-    logHealthMetrics(metrics, position);
+    logHealthMetrics(metrics, position, blockInfo);
   }
 });
 

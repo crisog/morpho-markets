@@ -19,3 +19,8 @@ export type PositionMetrics = {
   maxLtvPercentage: number;
   isHealthy: boolean;
 };
+
+export type BlockInfo = {
+  timestamp: bigint;
+  blockNumber: bigint;
+};
