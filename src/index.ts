@@ -1,15 +1,18 @@
 import { ponder } from "@/generated";
 import { and, eq, gt } from "drizzle-orm";
 import * as schema from "../ponder.schema";
-
 import { IOracleAbi } from "../abis/IOracle";
+import {
+  calculatePositionMetrics,
+  logPositionDetails,
+  logLiquidationAlert,
+  calculateLiquidationIncentive,
+  logRiskWarning,
+  logHealthMetrics,
+  CONSTANTS,
+} from "./utils";
 
 ponder.on("Liquidations:block", async ({ event, context }) => {
-  const ORACLE_PRICE_SCALE = BigInt(1e36);
-  const WAD = BigInt(1e18);
-  const WARNING_THRESHOLD = 0.95; // 95% of max LTV
-  const HIGH_RISK_THRESHOLD = 0.98; // 98% of max LTV
-
   const riskPositions = await context.db.sql
     .select({
       marketId: schema.positions.marketId,
@@ -39,124 +42,57 @@ ponder.on("Liquidations:block", async ({ event, context }) => {
     );
 
   for (const position of riskPositions) {
-    const borrowed =
-      (position.borrowShares * position.totalBorrowAssets) /
-      position.totalBorrowShares;
+    const metrics = calculatePositionMetrics(position);
+    const ltvRatio = metrics.ltvPercentage / metrics.maxLtvPercentage;
 
-    // Collateral value in loan token terms
-    const collateralValue =
-      (position.collateral * position.price) / ORACLE_PRICE_SCALE;
+    logPositionDetails(position, metrics);
 
-    const maxBorrow = (collateralValue * position.lltv) / WAD;
-
-    const ltv = (borrowed * WAD) / collateralValue;
-    const ltvPercentage = Number(ltv) / 1e16;
-    const maxLtvPercentage = Number(position.lltv) / 1e16;
-
-    const isHealthy = maxBorrow >= borrowed;
-
-    console.log("Position details:");
-    console.log({
-      borrowShares: position.borrowShares.toString(),
-      borrowed: borrowed.toString(),
-      collateral: position.collateral.toString(),
-      collateralValue: collateralValue.toString(),
-      currentLTV: `${ltvPercentage.toFixed(2)}%`,
-      maxLTV: `${maxLtvPercentage.toFixed(2)}%`,
-      isHealthy,
-    });
-
-    const ltvRatio = ltvPercentage / maxLtvPercentage;
-
-    if (!isHealthy) {
-      const liquidationIncentiveFactor = Math.min(
-        1.15, // MAX_LIF
-        1 / ((0.3 * maxLtvPercentage) / 100 + 0.7)
+    if (!metrics.isHealthy) {
+      const liquidationIncentiveFactor = calculateLiquidationIncentive(
+        metrics.maxLtvPercentage
       );
-
-      console.log(`🚨 LIQUIDATION ALERT 🚨`);
-      console.log({
-        marketId: position.marketId,
-        borrower: position.borrower,
-        currentLTV: `${ltvPercentage.toFixed(2)}%`,
-        maxLTV: `${maxLtvPercentage.toFixed(2)}%`,
-        borrowed: borrowed.toString(),
-        collateral: position.collateral.toString(),
-        possibleSeizure: (
-          (borrowed * BigInt(Math.floor(liquidationIncentiveFactor * 1e18))) /
-          WAD
-        ).toString(),
-        liquidationIncentive: `${(
-          (liquidationIncentiveFactor - 1) *
-          100
-        ).toFixed(2)}%`,
-      });
-    } else if (ltvRatio >= HIGH_RISK_THRESHOLD) {
-      console.log(`⚠️ HIGH RISK POSITION ⚠️`);
-      console.log({
-        marketId: position.marketId,
-        borrower: position.borrower,
-        currentLTV: `${ltvPercentage.toFixed(2)}%`,
-        maxLTV: `${maxLtvPercentage.toFixed(2)}%`,
-        buffer: `${(maxLtvPercentage - ltvPercentage).toFixed(2)}%`,
-        riskLevel: `${(ltvRatio * 100).toFixed(2)}%`,
-      });
-    } else if (ltvRatio >= WARNING_THRESHOLD) {
-      console.log(`📊 RISK WARNING`);
-      console.log({
-        marketId: position.marketId,
-        borrower: position.borrower,
-        currentLTV: `${ltvPercentage.toFixed(2)}%`,
-        maxLTV: `${maxLtvPercentage.toFixed(2)}%`,
-        buffer: `${(maxLtvPercentage - ltvPercentage).toFixed(2)}%`,
-      });
+      logLiquidationAlert(position, metrics, liquidationIncentiveFactor);
+    } else if (ltvRatio >= CONSTANTS.HIGH_RISK_THRESHOLD) {
+      logRiskWarning("HIGH", position, metrics, ltvRatio);
+    } else if (ltvRatio >= CONSTANTS.WARNING_THRESHOLD) {
+      logRiskWarning("MEDIUM", position, metrics, ltvRatio);
     }
 
-    console.log(`Position Health Metrics:`);
-    console.log({
-      collateralValue: collateralValue.toString(),
-      borrowedValue: borrowed.toString(),
-      maxBorrowValue: maxBorrow.toString(),
-      healthBuffer: (maxBorrow - borrowed).toString(),
-      oraclePrice: position.price.toString(),
-    });
+    logHealthMetrics(metrics, position);
   }
 });
+
+const IGNORED_ORACLES = [
+  "0x3A7bB36Ee3f3eE32A60e9f2b33c1e5f2E83ad766",
+  "0x94C2DfA8917F1657a55D1d604fd31C930A10Bca3",
+  "0x0000000000000000000000000000000000000000",
+];
 
 ponder.on("OracleUpdates:block", async ({ event, context }) => {
   const markets = await context.db.sql.select().from(schema.markets);
 
   for (const market of markets) {
-    if (
-      market.oracle === "0x3A7bB36Ee3f3eE32A60e9f2b33c1e5f2E83ad766" ||
-      market.oracle === "0x94C2DfA8917F1657a55D1d604fd31C930A10Bca3" ||
-      market.oracle === "0x0000000000000000000000000000000000000000"
-    ) {
-      continue;
-    }
-
-    let price: bigint;
+    if (IGNORED_ORACLES.includes(market.oracle)) continue;
 
     try {
-      price = await context.client.readContract({
+      const price = await context.client.readContract({
         address: market.oracle as `0x${string}`,
         abi: IOracleAbi,
         functionName: "price",
       });
+
+      await context.db
+        .insert(schema.oraclePrices)
+        .values({
+          oracleAddress: market.oracle,
+          price,
+          blockNumber: event.block.number,
+          timestamp: event.block.timestamp,
+        })
+        .onConflictDoNothing();
     } catch (error) {
       console.error(`Failed to fetch price for oracle ${market.oracle}`);
-      continue;
     }
-
-    await context.db
-      .insert(schema.oraclePrices)
-      .values({
-        oracleAddress: market.oracle,
-        price: price,
-        blockNumber: event.block.number,
-        timestamp: event.block.timestamp,
-      })
-      .onConflictDoNothing();
   }
 });
 
@@ -285,7 +221,6 @@ ponder.on("Morpho:AccrueInterest", async ({ event, context }) => {
   });
 
   const market = await context.db.find(schema.markets, { id: event.args.id });
-
   if (market) {
     await context.db.update(schema.markets, { id: event.args.id }).set({
       totalBorrowAssets: market.totalBorrowAssets + event.args.interest,
