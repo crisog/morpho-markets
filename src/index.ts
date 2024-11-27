@@ -13,6 +13,9 @@ import {
 } from "./utils";
 
 ponder.on("Liquidations:block", async ({ event, context }) => {
+  console.time("Total block processing time");
+
+  console.time("Database query");
   const riskPositions = await context.db.sql
     .select({
       marketId: schema.positions.marketId,
@@ -40,36 +43,48 @@ ponder.on("Liquidations:block", async ({ event, context }) => {
         gt(schema.positions.collateral, 0n)
       )
     );
+  console.timeEnd("Database query");
 
   const blockInfo = {
     timestamp: event.block.timestamp,
     blockNumber: event.block.number,
   };
 
+  console.time("Position processing");
+  console.log(`Processing ${riskPositions.length} positions`);
+
+  console.time("Position iteration");
   for (const position of riskPositions) {
     const metrics = calculatePositionMetrics(position);
     const ltvRatio = metrics.ltvPercentage / metrics.maxLtvPercentage;
 
-    logPositionDetails(position, metrics, blockInfo);
+    // Only process positions that are near liquidation or liquidatable
+    if (ltvRatio >= CONSTANTS.WARNING_THRESHOLD) {
+      logPositionDetails(position, metrics, blockInfo);
 
-    if (!metrics.isHealthy) {
-      const liquidationIncentiveFactor = calculateLiquidationIncentive(
-        metrics.maxLtvPercentage
-      );
-      logLiquidationAlert(
-        position,
-        metrics,
-        liquidationIncentiveFactor,
-        blockInfo
-      );
-    } else if (ltvRatio >= CONSTANTS.HIGH_RISK_THRESHOLD) {
-      logRiskWarning("HIGH", position, metrics, ltvRatio, blockInfo);
-    } else if (ltvRatio >= CONSTANTS.WARNING_THRESHOLD) {
-      logRiskWarning("MEDIUM", position, metrics, ltvRatio, blockInfo);
+      if (!metrics.isHealthy) {
+        const liquidationIncentiveFactor = calculateLiquidationIncentive(
+          metrics.maxLtvPercentage
+        );
+        logLiquidationAlert(
+          position,
+          metrics,
+          liquidationIncentiveFactor,
+          blockInfo
+        );
+      } else if (ltvRatio >= CONSTANTS.HIGH_RISK_THRESHOLD) {
+        logRiskWarning("HIGH", position, metrics, ltvRatio, blockInfo);
+      } else {
+        logRiskWarning("MEDIUM", position, metrics, ltvRatio, blockInfo);
+      }
+
+      logHealthMetrics(metrics, position, blockInfo);
     }
-
-    logHealthMetrics(metrics, position, blockInfo);
   }
+  console.timeEnd("Position iteration");
+  console.timeEnd("Position processing");
+
+  console.timeEnd("Total block processing time");
 });
 
 const IGNORED_ORACLES = [

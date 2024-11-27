@@ -10,7 +10,7 @@ export const CONSTANTS = {
 
 export const formatTimestamp = (timestamp: bigint): string => {
   const date = new Date(Number(timestamp) * 1000);
-  return date.toLocaleString("en-US", { timeZone: "America/New_York" });
+  return date.toLocaleString("en-US", { timeZone: "America/Halifax" });
 };
 
 export const calculatePositionMetrics = (
