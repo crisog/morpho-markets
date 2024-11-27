@@ -1,4 +1,5 @@
 import { createConfig } from "@ponder/core";
+import { rateLimit } from "@ponder/utils";
 import { http } from "viem";
 
 import { MorphoAbi } from "./abis/Morpho";
@@ -7,18 +8,32 @@ export default createConfig({
   networks: {
     mainnet: {
       chainId: 1,
-      transport: http(process.env.ETH_RPC_URL),
+      transport: rateLimit(
+        http(process.env.ETH_RPC_URL, { retryCount: 1, timeout: 1_000 }),
+        {
+          requestsPerSecond: 100,
+        }
+      ),
     },
   },
   contracts: {
     Morpho: {
       network: "mainnet",
       abi: MorphoAbi,
-      address: "0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb",
       startBlock: 18883124,
-      filter: {
-        event: "CreateMarket",
-      },
+      address: "0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb",
+    },
+  },
+  blocks: {
+    OracleUpdates: {
+      network: "mainnet",
+      startBlock: 21279706,
+      interval: 1,
+    },
+    Liquidations: {
+      network: "mainnet",
+      startBlock: 21279706,
+      interval: 1,
     },
   },
 });
