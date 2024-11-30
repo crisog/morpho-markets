@@ -1,8 +1,11 @@
 import { ponder } from "@/generated";
 import * as schema from "../ponder.schema";
 
+// Morpho (ETH Mainnet)
 ponder.on("Morpho:CreateMarket", async ({ event, context }) => {
-  await context.db.insert(schema.markets).values({
+  const { db } = context;
+
+  await db.insert(schema.markets).values({
     id: event.args.id,
     loanToken: event.args.marketParams.loanToken,
     collateralToken: event.args.marketParams.collateralToken,
@@ -17,12 +20,32 @@ ponder.on("Morpho:CreateMarket", async ({ event, context }) => {
 });
 
 ponder.on("Morpho:SupplyCollateral", async ({ event, context }) => {
-  await context.db
+  const { db } = context;
+
+  const market = await db.find(schema.markets, { id: event.args.id });
+  if (!market) {
+    throw new Error(
+      `Market ${event.args.id} not found during collateral supply`
+    );
+  }
+
+  const existingPosition = await db.sql.query.positions.findFirst({
+    where: (positions, { eq, and }) =>
+      and(
+        eq(positions.marketId, event.args.id),
+        eq(positions.borrower, event.args.onBehalf)
+      ),
+    with: {
+      market: true,
+    },
+  });
+
+  await db
     .insert(schema.positions)
     .values({
       marketId: event.args.id,
       borrower: event.args.onBehalf,
-      borrowShares: 0n,
+      borrowShares: existingPosition?.borrowShares ?? 0n,
       collateral: event.args.assets,
       lastUpdated: event.block.timestamp,
     })
@@ -33,7 +56,9 @@ ponder.on("Morpho:SupplyCollateral", async ({ event, context }) => {
 });
 
 ponder.on("Morpho:WithdrawCollateral", async ({ event, context }) => {
-  await context.db
+  const { db } = context;
+
+  await db
     .insert(schema.positions)
     .values({
       marketId: event.args.id,
@@ -49,7 +74,14 @@ ponder.on("Morpho:WithdrawCollateral", async ({ event, context }) => {
 });
 
 ponder.on("Morpho:Supply", async ({ event, context }) => {
-  await context.db.insert(schema.marketStates).values({
+  const { db } = context;
+
+  const market = await db.find(schema.markets, { id: event.args.id });
+  if (!market) {
+    throw new Error(`Market ${event.args.id} not found during supply`);
+  }
+
+  await db.insert(schema.marketStates).values({
     marketId: event.args.id,
     totalSupplyAssets: event.args.assets,
     totalBorrowAssets: 0n,
@@ -59,17 +91,21 @@ ponder.on("Morpho:Supply", async ({ event, context }) => {
     timestamp: event.block.timestamp,
   });
 
-  const market = await context.db.find(schema.markets, { id: event.args.id });
-  if (market) {
-    await context.db.update(schema.markets, { id: event.args.id }).set({
-      totalSupplyAssets: market.totalSupplyAssets + event.args.assets,
-      lastUpdate: event.block.timestamp,
-    });
-  }
+  await db.update(schema.markets, { id: event.args.id }).set({
+    totalSupplyAssets: market.totalSupplyAssets + event.args.assets,
+    lastUpdate: event.block.timestamp,
+  });
 });
 
 ponder.on("Morpho:Borrow", async ({ event, context }) => {
-  await context.db
+  const { db } = context;
+
+  const market = await db.find(schema.markets, { id: event.args.id });
+  if (!market) {
+    throw new Error(`Market ${event.args.id} not found during borrow`);
+  }
+
+  await db
     .insert(schema.positions)
     .values({
       marketId: event.args.id,
@@ -83,7 +119,7 @@ ponder.on("Morpho:Borrow", async ({ event, context }) => {
       lastUpdated: event.block.timestamp,
     }));
 
-  await context.db.insert(schema.marketStates).values({
+  await db.insert(schema.marketStates).values({
     marketId: event.args.id,
     totalBorrowAssets: event.args.assets,
     totalBorrowShares: event.args.shares,
@@ -92,18 +128,22 @@ ponder.on("Morpho:Borrow", async ({ event, context }) => {
     timestamp: event.block.timestamp,
   });
 
-  const market = await context.db.find(schema.markets, { id: event.args.id });
-  if (market) {
-    await context.db.update(schema.markets, { id: event.args.id }).set({
-      totalBorrowAssets: market.totalBorrowAssets + event.args.assets,
-      totalBorrowShares: market.totalBorrowShares + event.args.shares,
-      lastUpdate: event.block.timestamp,
-    });
-  }
+  await db.update(schema.markets, { id: event.args.id }).set({
+    totalBorrowAssets: market.totalBorrowAssets + event.args.assets,
+    totalBorrowShares: market.totalBorrowShares + event.args.shares,
+    lastUpdate: event.block.timestamp,
+  });
 });
 
 ponder.on("Morpho:Repay", async ({ event, context }) => {
-  await context.db
+  const { db } = context;
+
+  const market = await db.find(schema.markets, { id: event.args.id });
+  if (!market) {
+    throw new Error(`Market ${event.args.id} not found during repay`);
+  }
+
+  await db
     .insert(schema.positions)
     .values({
       marketId: event.args.id,
@@ -117,7 +157,7 @@ ponder.on("Morpho:Repay", async ({ event, context }) => {
       lastUpdated: event.block.timestamp,
     }));
 
-  await context.db.insert(schema.marketStates).values({
+  await db.insert(schema.marketStates).values({
     marketId: event.args.id,
     totalBorrowAssets: -event.args.assets,
     totalBorrowShares: -event.args.shares,
@@ -126,18 +166,24 @@ ponder.on("Morpho:Repay", async ({ event, context }) => {
     timestamp: event.block.timestamp,
   });
 
-  const market = await context.db.find(schema.markets, { id: event.args.id });
-  if (market) {
-    await context.db.update(schema.markets, { id: event.args.id }).set({
-      totalBorrowAssets: market.totalBorrowAssets - event.args.assets,
-      totalBorrowShares: market.totalBorrowShares - event.args.shares,
-      lastUpdate: event.block.timestamp,
-    });
-  }
+  await db.update(schema.markets, { id: event.args.id }).set({
+    totalBorrowAssets: market.totalBorrowAssets - event.args.assets,
+    totalBorrowShares: market.totalBorrowShares - event.args.shares,
+    lastUpdate: event.block.timestamp,
+  });
 });
 
 ponder.on("Morpho:AccrueInterest", async ({ event, context }) => {
-  await context.db.insert(schema.marketStates).values({
+  const { db } = context;
+
+  const market = await db.find(schema.markets, { id: event.args.id });
+  if (!market) {
+    throw new Error(
+      `Market ${event.args.id} not found during accruing interest`
+    );
+  }
+
+  await db.insert(schema.marketStates).values({
     marketId: event.args.id,
     totalBorrowAssets: event.args.interest,
     totalSupplyAssets: event.args.interest,
@@ -147,18 +193,46 @@ ponder.on("Morpho:AccrueInterest", async ({ event, context }) => {
     timestamp: event.block.timestamp,
   });
 
-  const market = await context.db.find(schema.markets, { id: event.args.id });
-  if (market) {
-    await context.db.update(schema.markets, { id: event.args.id }).set({
-      totalBorrowAssets: market.totalBorrowAssets + event.args.interest,
-      totalSupplyAssets: market.totalSupplyAssets + event.args.interest,
-      lastUpdate: event.block.timestamp,
-    });
-  }
+  await db.update(schema.markets, { id: event.args.id }).set({
+    totalBorrowAssets: market.totalBorrowAssets + event.args.interest,
+    totalSupplyAssets: market.totalSupplyAssets + event.args.interest,
+    lastUpdate: event.block.timestamp,
+  });
 });
 
 ponder.on("Morpho:Liquidate", async ({ event, context }) => {
-  await context.db
+  const { db } = context;
+
+  const market = await db.find(schema.markets, { id: event.args.id });
+  if (!market) {
+    throw new Error(`Market ${event.args.id} not found during liquidation`);
+  }
+
+  const position = await db.sql.query.positions.findFirst({
+    where: (positions, { eq, and }) =>
+      and(
+        eq(positions.marketId, event.args.id),
+        eq(positions.borrower, event.args.borrower)
+      ),
+    with: {
+      market: {
+        with: {
+          marketStates: {
+            orderBy: (marketStates, { desc }) => [desc(marketStates.timestamp)],
+            limit: 1,
+          },
+        },
+      },
+    },
+  });
+
+  if (!position) {
+    throw new Error(
+      `Position not found for borrower ${event.args.borrower} in market ${event.args.id}`
+    );
+  }
+
+  await db
     .insert(schema.positions)
     .values({
       marketId: event.args.id,
@@ -176,7 +250,7 @@ ponder.on("Morpho:Liquidate", async ({ event, context }) => {
       lastUpdated: event.block.timestamp,
     }));
 
-  await context.db.insert(schema.marketStates).values({
+  await db.insert(schema.marketStates).values({
     marketId: event.args.id,
     totalBorrowAssets: -(event.args.repaidAssets + event.args.badDebtAssets),
     totalBorrowShares: -(event.args.repaidShares + event.args.badDebtShares),
@@ -185,18 +259,15 @@ ponder.on("Morpho:Liquidate", async ({ event, context }) => {
     timestamp: event.block.timestamp,
   });
 
-  const market = await context.db.find(schema.markets, { id: event.args.id });
-  if (market) {
-    await context.db.update(schema.markets, { id: event.args.id }).set({
-      totalBorrowAssets:
-        market.totalBorrowAssets -
-        event.args.repaidAssets -
-        event.args.badDebtAssets,
-      totalBorrowShares:
-        market.totalBorrowShares -
-        event.args.repaidShares -
-        event.args.badDebtShares,
-      lastUpdate: event.block.timestamp,
-    });
-  }
+  await db.update(schema.markets, { id: event.args.id }).set({
+    totalBorrowAssets:
+      market.totalBorrowAssets -
+      event.args.repaidAssets -
+      event.args.badDebtAssets,
+    totalBorrowShares:
+      market.totalBorrowShares -
+      event.args.repaidShares -
+      event.args.badDebtShares,
+    lastUpdate: event.block.timestamp,
+  });
 });
