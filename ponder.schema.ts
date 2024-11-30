@@ -1,4 +1,4 @@
-import { onchainTable, primaryKey } from "@ponder/core";
+import { onchainTable, primaryKey, relations } from "@ponder/core";
 
 export const markets = onchainTable("markets", (t) => ({
   id: t.text().primaryKey(),
@@ -56,3 +56,28 @@ export const marketStates = onchainTable(
     }),
   })
 );
+export const marketsRelations = relations(markets, ({ many }) => ({
+  positions: many(positions),
+  marketStates: many(marketStates),
+}));
+
+export const positionsRelations = relations(positions, ({ one }) => ({
+  market: one(markets, {
+    fields: [positions.marketId],
+    references: [markets.id],
+  }),
+}));
+
+export const marketStatesRelations = relations(marketStates, ({ one }) => ({
+  market: one(markets, {
+    fields: [marketStates.marketId],
+    references: [markets.id],
+  }),
+}));
+
+export const oraclePricesRelations = relations(oraclePrices, ({ one }) => ({
+  market: one(markets, {
+    fields: [oraclePrices.oracleAddress],
+    references: [markets.oracle],
+  }),
+}));
