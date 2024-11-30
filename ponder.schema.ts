@@ -7,6 +7,7 @@ export const markets = onchainTable("markets", (t) => ({
   oracle: t.text().notNull(),
   irm: t.text().notNull(),
   lltv: t.bigint().notNull(),
+  totalSupplyAssets: t.bigint().notNull(),
   totalBorrowAssets: t.bigint().notNull(),
   totalBorrowShares: t.bigint().notNull(),
   lastUpdate: t.bigint().notNull(),

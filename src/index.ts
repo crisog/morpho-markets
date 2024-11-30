@@ -11,6 +11,7 @@ ponder.on("Morpho:CreateMarket", async ({ event, context }) => {
     lltv: event.args.marketParams.lltv,
     totalBorrowAssets: 0n,
     totalBorrowShares: 0n,
+    totalSupplyAssets: 0n,
     lastUpdate: event.block.timestamp,
   });
 });
@@ -45,6 +46,26 @@ ponder.on("Morpho:WithdrawCollateral", async ({ event, context }) => {
       collateral: position.collateral - event.args.assets,
       lastUpdated: event.block.timestamp,
     }));
+});
+
+ponder.on("Morpho:Supply", async ({ event, context }) => {
+  await context.db.insert(schema.marketStates).values({
+    marketId: event.args.id,
+    totalSupplyAssets: event.args.assets,
+    totalBorrowAssets: 0n,
+    totalBorrowShares: 0n,
+    logIndex: event.log.logIndex,
+    blockNumber: event.block.number,
+    timestamp: event.block.timestamp,
+  });
+
+  const market = await context.db.find(schema.markets, { id: event.args.id });
+  if (market) {
+    await context.db.update(schema.markets, { id: event.args.id }).set({
+      totalSupplyAssets: market.totalSupplyAssets + event.args.assets,
+      lastUpdate: event.block.timestamp,
+    });
+  }
 });
 
 ponder.on("Morpho:Borrow", async ({ event, context }) => {
@@ -119,6 +140,7 @@ ponder.on("Morpho:AccrueInterest", async ({ event, context }) => {
   await context.db.insert(schema.marketStates).values({
     marketId: event.args.id,
     totalBorrowAssets: event.args.interest,
+    totalSupplyAssets: event.args.interest,
     totalBorrowShares: 0n,
     logIndex: event.log.logIndex,
     blockNumber: event.block.number,
@@ -129,6 +151,7 @@ ponder.on("Morpho:AccrueInterest", async ({ event, context }) => {
   if (market) {
     await context.db.update(schema.markets, { id: event.args.id }).set({
       totalBorrowAssets: market.totalBorrowAssets + event.args.interest,
+      totalSupplyAssets: market.totalSupplyAssets + event.args.interest,
       lastUpdate: event.block.timestamp,
     });
   }
