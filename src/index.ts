@@ -15,6 +15,7 @@ ponder.on("Morpho:CreateMarket", async ({ event, context }) => {
     totalBorrowAssets: 0n,
     totalBorrowShares: 0n,
     totalSupplyAssets: 0n,
+    totalSupplyShares: 0n,
     lastUpdate: event.block.timestamp,
   });
 });
@@ -84,6 +85,7 @@ ponder.on("Morpho:Supply", async ({ event, context }) => {
   await db.insert(schema.marketStates).values({
     marketId: event.args.id,
     totalSupplyAssets: event.args.assets,
+    totalSupplyShares: event.args.shares,
     totalBorrowAssets: 0n,
     totalBorrowShares: 0n,
     logIndex: event.log.logIndex,
@@ -93,6 +95,7 @@ ponder.on("Morpho:Supply", async ({ event, context }) => {
 
   await db.update(schema.markets, { id: event.args.id }).set({
     totalSupplyAssets: market.totalSupplyAssets + event.args.assets,
+    totalSupplyShares: market.totalSupplyShares + event.args.shares,
     lastUpdate: event.block.timestamp,
   });
 });
@@ -193,11 +196,28 @@ ponder.on("Morpho:AccrueInterest", async ({ event, context }) => {
     timestamp: event.block.timestamp,
   });
 
+  const updatedTotalBorrowAssets =
+    market.totalBorrowAssets + event.args.interest;
+  const updatedTotalSupplyAssets =
+    market.totalSupplyAssets + event.args.interest;
+
   await db.update(schema.markets, { id: event.args.id }).set({
-    totalBorrowAssets: market.totalBorrowAssets + event.args.interest,
-    totalSupplyAssets: market.totalSupplyAssets + event.args.interest,
+    totalBorrowAssets: updatedTotalBorrowAssets,
+    totalSupplyAssets: updatedTotalSupplyAssets,
     lastUpdate: event.block.timestamp,
   });
+
+  if (event.args.feeShares > 0n) {
+    await db.insert(schema.feeCollections).values({
+      marketId: event.args.id,
+      feeShares: event.args.feeShares,
+      totalSupplyAssets: market.totalSupplyAssets,
+      totalSupplyShares: market.totalSupplyShares,
+      timestamp: event.block.timestamp,
+      blockNumber: event.block.number,
+      logIndex: event.log.logIndex,
+    });
+  }
 });
 
 ponder.on("Morpho:Liquidate", async ({ event, context }) => {

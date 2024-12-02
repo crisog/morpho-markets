@@ -8,6 +8,7 @@ export const markets = onchainTable("markets", (t) => ({
   irm: t.text().notNull(),
   lltv: t.bigint().notNull(),
   totalSupplyAssets: t.bigint().notNull(),
+  totalSupplyShares: t.bigint().notNull(),
   totalBorrowAssets: t.bigint().notNull(),
   totalBorrowShares: t.bigint().notNull(),
   lastUpdate: t.bigint().notNull(),
@@ -56,9 +57,29 @@ export const marketStates = onchainTable(
     }),
   })
 );
+
+export const feeCollections = onchainTable(
+  "fee_collections",
+  (t) => ({
+    marketId: t.text().notNull(),
+    feeShares: t.bigint().notNull(),
+    totalSupplyAssets: t.bigint().notNull(),
+    totalSupplyShares: t.bigint().notNull(),
+    timestamp: t.bigint().notNull(),
+    blockNumber: t.bigint().notNull(),
+    logIndex: t.integer().notNull(),
+  }),
+  (table) => ({
+    pk: primaryKey({
+      columns: [table.marketId, table.blockNumber, table.logIndex],
+    }),
+  })
+);
+
 export const marketsRelations = relations(markets, ({ many }) => ({
   positions: many(positions),
   marketStates: many(marketStates),
+  feeCollections: many(feeCollections),
 }));
 
 export const positionsRelations = relations(positions, ({ one }) => ({
@@ -79,5 +100,12 @@ export const oraclePricesRelations = relations(oraclePrices, ({ one }) => ({
   market: one(markets, {
     fields: [oraclePrices.oracleAddress],
     references: [markets.oracle],
+  }),
+}));
+
+export const feeCollectionsRelations = relations(feeCollections, ({ one }) => ({
+  market: one(markets, {
+    fields: [feeCollections.marketId],
+    references: [markets.id],
   }),
 }));
