@@ -11,8 +11,10 @@
     "typecheck": "tsc"
   },
   "dependencies": {
+    "@morpho-org/blue-sdk-ethers-liquidation": "^1.12.7",
     "@ponder/core": "^0.7.11",
     "hono": "^4.5.0",
+    "node-cache": "^5.1.2",
     "viem": "^2.21.3"
   },
   "devDependencies": {
