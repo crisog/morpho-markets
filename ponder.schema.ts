@@ -45,8 +45,11 @@ export const marketStates = onchainTable(
   "market_states",
   (t) => ({
     marketId: t.text().notNull(),
+    totalSupplyAssets: t.bigint().notNull(),
+    totalSupplyShares: t.bigint().notNull(),
     totalBorrowAssets: t.bigint().notNull(),
     totalBorrowShares: t.bigint().notNull(),
+    collateralChange: t.bigint().notNull(),
     logIndex: t.integer().notNull(),
     blockNumber: t.bigint().notNull(),
     timestamp: t.bigint().notNull(),
@@ -76,6 +79,7 @@ export const feeCollections = onchainTable(
   })
 );
 
+// Relations remain unchanged
 export const marketsRelations = relations(markets, ({ many }) => ({
   positions: many(positions),
   marketStates: many(marketStates),

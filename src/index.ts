@@ -54,24 +54,56 @@ ponder.on("Morpho:SupplyCollateral", async ({ event, context }) => {
       collateral: position.collateral + event.args.assets,
       lastUpdated: event.block.timestamp,
     }));
+
+  await db.insert(schema.marketStates).values({
+    marketId: event.args.id,
+    totalBorrowAssets: 0n,
+    totalBorrowShares: 0n,
+    totalSupplyAssets: 0n,
+    totalSupplyShares: 0n,
+    collateralChange: event.args.assets,
+    logIndex: event.log.logIndex,
+    blockNumber: event.block.number,
+    timestamp: event.block.timestamp,
+  });
 });
 
 ponder.on("Morpho:WithdrawCollateral", async ({ event, context }) => {
   const { db } = context;
+
+  const existingPosition = await db.sql.query.positions.findFirst({
+    where: (positions, { eq, and }) =>
+      and(
+        eq(positions.marketId, event.args.id),
+        eq(positions.borrower, event.args.onBehalf)
+      ),
+  });
 
   await db
     .insert(schema.positions)
     .values({
       marketId: event.args.id,
       borrower: event.args.onBehalf,
-      borrowShares: 0n,
-      collateral: 0n,
+      borrowShares: existingPosition?.borrowShares ?? 0n,
+      collateral: existingPosition?.collateral ?? 0n,
       lastUpdated: event.block.timestamp,
     })
     .onConflictDoUpdate((position) => ({
       collateral: position.collateral - event.args.assets,
       lastUpdated: event.block.timestamp,
     }));
+
+  await db.insert(schema.marketStates).values({
+    marketId: event.args.id,
+    totalSupplyAssets: 0n,
+    totalSupplyShares: 0n,
+    totalBorrowAssets: 0n,
+    totalBorrowShares: 0n,
+    collateralChange: -event.args.assets,
+    logIndex: event.log.logIndex,
+    blockNumber: event.block.number,
+    timestamp: event.block.timestamp,
+  });
 });
 
 ponder.on("Morpho:Supply", async ({ event, context }) => {
@@ -88,6 +120,7 @@ ponder.on("Morpho:Supply", async ({ event, context }) => {
     totalSupplyShares: event.args.shares,
     totalBorrowAssets: 0n,
     totalBorrowShares: 0n,
+    collateralChange: 0n,
     logIndex: event.log.logIndex,
     blockNumber: event.block.number,
     timestamp: event.block.timestamp,
@@ -108,13 +141,21 @@ ponder.on("Morpho:Borrow", async ({ event, context }) => {
     throw new Error(`Market ${event.args.id} not found during borrow`);
   }
 
+  const existingPosition = await db.sql.query.positions.findFirst({
+    where: (positions, { eq, and }) =>
+      and(
+        eq(positions.marketId, event.args.id),
+        eq(positions.borrower, event.args.onBehalf)
+      ),
+  });
+
   await db
     .insert(schema.positions)
     .values({
       marketId: event.args.id,
       borrower: event.args.onBehalf,
       borrowShares: event.args.shares,
-      collateral: 0n,
+      collateral: existingPosition?.collateral ?? 0n,
       lastUpdated: event.block.timestamp,
     })
     .onConflictDoUpdate((position) => ({
@@ -126,6 +167,9 @@ ponder.on("Morpho:Borrow", async ({ event, context }) => {
     marketId: event.args.id,
     totalBorrowAssets: event.args.assets,
     totalBorrowShares: event.args.shares,
+    totalSupplyAssets: 0n,
+    totalSupplyShares: 0n,
+    collateralChange: 0n,
     logIndex: event.log.logIndex,
     blockNumber: event.block.number,
     timestamp: event.block.timestamp,
@@ -146,13 +190,21 @@ ponder.on("Morpho:Repay", async ({ event, context }) => {
     throw new Error(`Market ${event.args.id} not found during repay`);
   }
 
+  const existingPosition = await db.sql.query.positions.findFirst({
+    where: (positions, { eq, and }) =>
+      and(
+        eq(positions.marketId, event.args.id),
+        eq(positions.borrower, event.args.onBehalf)
+      ),
+  });
+
   await db
     .insert(schema.positions)
     .values({
       marketId: event.args.id,
       borrower: event.args.onBehalf,
-      borrowShares: 0n,
-      collateral: 0n,
+      borrowShares: existingPosition?.borrowShares ?? 0n,
+      collateral: existingPosition?.collateral ?? 0n,
       lastUpdated: event.block.timestamp,
     })
     .onConflictDoUpdate((position) => ({
@@ -164,6 +216,9 @@ ponder.on("Morpho:Repay", async ({ event, context }) => {
     marketId: event.args.id,
     totalBorrowAssets: -event.args.assets,
     totalBorrowShares: -event.args.shares,
+    totalSupplyAssets: 0n,
+    totalSupplyShares: 0n,
+    collateralChange: 0n,
     logIndex: event.log.logIndex,
     blockNumber: event.block.number,
     timestamp: event.block.timestamp,
@@ -188,9 +243,11 @@ ponder.on("Morpho:AccrueInterest", async ({ event, context }) => {
 
   await db.insert(schema.marketStates).values({
     marketId: event.args.id,
-    totalBorrowAssets: event.args.interest,
     totalSupplyAssets: event.args.interest,
+    totalSupplyShares: event.args.feeShares,
+    totalBorrowAssets: event.args.interest,
     totalBorrowShares: 0n,
+    collateralChange: 0n,
     logIndex: event.log.logIndex,
     blockNumber: event.block.number,
     timestamp: event.block.timestamp,
@@ -200,10 +257,13 @@ ponder.on("Morpho:AccrueInterest", async ({ event, context }) => {
     market.totalBorrowAssets + event.args.interest;
   const updatedTotalSupplyAssets =
     market.totalSupplyAssets + event.args.interest;
+  const updatedTotalSupplyShares =
+    market.totalSupplyShares + event.args.feeShares;
 
   await db.update(schema.markets, { id: event.args.id }).set({
     totalBorrowAssets: updatedTotalBorrowAssets,
     totalSupplyAssets: updatedTotalSupplyAssets,
+    totalSupplyShares: updatedTotalSupplyShares,
     lastUpdate: event.block.timestamp,
   });
 
@@ -211,8 +271,8 @@ ponder.on("Morpho:AccrueInterest", async ({ event, context }) => {
     await db.insert(schema.feeCollections).values({
       marketId: event.args.id,
       feeShares: event.args.feeShares,
-      totalSupplyAssets: market.totalSupplyAssets,
-      totalSupplyShares: market.totalSupplyShares,
+      totalSupplyAssets: updatedTotalSupplyAssets,
+      totalSupplyShares: updatedTotalSupplyShares,
       timestamp: event.block.timestamp,
       blockNumber: event.block.number,
       logIndex: event.log.logIndex,
@@ -234,16 +294,6 @@ ponder.on("Morpho:Liquidate", async ({ event, context }) => {
         eq(positions.marketId, event.args.id),
         eq(positions.borrower, event.args.borrower)
       ),
-    with: {
-      market: {
-        with: {
-          marketStates: {
-            orderBy: (marketStates, { desc }) => [desc(marketStates.timestamp)],
-            limit: 1,
-          },
-        },
-      },
-    },
   });
 
   if (!position) {
@@ -257,8 +307,8 @@ ponder.on("Morpho:Liquidate", async ({ event, context }) => {
     .values({
       marketId: event.args.id,
       borrower: event.args.borrower,
-      borrowShares: 0n,
-      collateral: 0n,
+      borrowShares: position?.borrowShares ?? 0n,
+      collateral: position?.collateral ?? 0n,
       lastUpdated: event.block.timestamp,
     })
     .onConflictDoUpdate((position) => ({
@@ -274,6 +324,9 @@ ponder.on("Morpho:Liquidate", async ({ event, context }) => {
     marketId: event.args.id,
     totalBorrowAssets: -(event.args.repaidAssets + event.args.badDebtAssets),
     totalBorrowShares: -(event.args.repaidShares + event.args.badDebtShares),
+    totalSupplyAssets: -event.args.badDebtAssets,
+    totalSupplyShares: 0n,
+    collateralChange: -event.args.seizedAssets,
     logIndex: event.log.logIndex,
     blockNumber: event.block.number,
     timestamp: event.block.timestamp,
@@ -288,6 +341,7 @@ ponder.on("Morpho:Liquidate", async ({ event, context }) => {
       market.totalBorrowShares -
       event.args.repaidShares -
       event.args.badDebtShares,
+    totalSupplyAssets: market.totalSupplyAssets - event.args.badDebtAssets,
     lastUpdate: event.block.timestamp,
   });
 });
