@@ -473,6 +473,11 @@
   resolved "https://registry.yarnpkg.com/@kamilkisiela/fast-url-parser/-/fast-url-parser-1.1.4.tgz#9d68877a489107411b953c54ea65d0658b515809"
   integrity sha512-gbkePEBupNydxCelHCESvFSFM8XPh1Zs/OAVRW/rKpEqPAl5PbOM90Si8mv9bvnR53uPD2s/FiRxdvSejpRJew==
 
+"@morpho-org/blue-api-sdk@^1.12.7":
+  version "1.12.7"
+  resolved "https://registry.yarnpkg.com/@morpho-org/blue-api-sdk/-/blue-api-sdk-1.12.7.tgz#a8e45091cf1d2a1c265d80e6e3ce8b38bba4c0cf"
+  integrity sha512-48chKRk5yPr3r0ECjzGTePs0Vn2BND4hOILOr/F4O7WAHwSZ/PodLBrzNWKqZd5B0MWA+Vc3BftkV7nR0IrReg==
+
 "@morpho-org/blue-sdk-ethers-liquidation@^1.12.7":
   version "1.12.7"
   resolved "https://registry.yarnpkg.com/@morpho-org/blue-sdk-ethers-liquidation/-/blue-sdk-ethers-liquidation-1.12.7.tgz#3c39a7b2f02c760403d324eaebbed0fd691559f8"
@@ -484,6 +489,13 @@
     graphql "^16.9.0"
     graphql-request "^6.1.0"
     graphql-tag "^2.12.6"
+
+"@morpho-org/blue-sdk-ethers@^1.12.7":
+  version "1.12.7"
+  resolved "https://registry.yarnpkg.com/@morpho-org/blue-sdk-ethers/-/blue-sdk-ethers-1.12.7.tgz#9b16614dc1215a5d76e306dbb5a1f1bbe0edab1e"
+  integrity sha512-cutjbA/+1NglfKm8iGBno6PvKF3x08/wTjI7JX8L9jUup1Xe5eVo/TMJVu9fGAfEEAYDH1IuDQBsSOoWbGBWVQ==
+  dependencies:
+    rxjs "^7.8.1"
 
 "@morpho-org/blue-sdk@^1.12.7":
   version "1.12.7"
@@ -2834,6 +2846,13 @@ run-parallel@^1.1.9:
   integrity sha512-5l4VyZR86LZ/lDxZTR6jqL8AFE2S0IFLMP26AbjsLVADxHdhB/c0GUsH+y39UfCi3dzz8OlQuPmnaJOMoDHQBA==
   dependencies:
     queue-microtask "^1.2.2"
+
+rxjs@^7.8.1:
+  version "7.8.1"
+  resolved "https://registry.yarnpkg.com/rxjs/-/rxjs-7.8.1.tgz#6f6f3d99ea8044291efd92e7c7fcf562c4057543"
+  integrity sha512-AA3TVj+0A2iuIoQkWEK/tqFjBq2j+6PO6Y0zJcvzLAFhEFIO3HL0vls9hWLncZbAAbK0mar7oZ4V079I/qPMxg==
+  dependencies:
+    tslib "^2.1.0"
 
 safe-buffer@~5.2.0:
   version "5.2.1"

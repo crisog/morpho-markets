@@ -11,7 +11,9 @@
     "typecheck": "tsc"
   },
   "dependencies": {
+    "@morpho-org/blue-api-sdk": "^1.12.7",
     "@morpho-org/blue-sdk": "^1.12.7",
+    "@morpho-org/blue-sdk-ethers": "^1.12.7",
     "@morpho-org/blue-sdk-ethers-liquidation": "^1.12.7",
     "@morpho-org/morpho-ts": "^1.12.7",
     "@ponder/core": "^0.7.11",
