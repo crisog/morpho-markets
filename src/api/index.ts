@@ -1,245 +1,234 @@
 import { ponder } from "@/generated";
 import * as schema from "../../ponder.schema";
-import { eq } from "@ponder/core";
-import { createPublicClient, http, formatUnits } from "viem";
+import { eq, desc, inArray } from "@ponder/core";
+import { MorphoAbi } from "../../abis/Morpho";
+import { createPublicClient, http } from "viem";
 import { mainnet } from "viem/chains";
+import { getChainAddresses, SharesMath } from "@morpho-org/blue-sdk";
+import { apiSdk } from "@morpho-org/blue-sdk-ethers-liquidation";
+import NodeCache from "node-cache";
+import { performance } from "perf_hooks";
 
-const TOKEN_PRICE_URL =
-  "https://api.coingecko.com/api/v3/coins/ethereum/contract";
+const ORACLE_PRICE_SCALE = 10n ** 36n;
+const WAD = 1_000_000_000_000_000_000n;
+const BATCH_SIZE = 300;
+
+type MarketConfig = typeof schema.markets.$inferSelect;
+
+const cache = new NodeCache({
+  stdTTL: 300,
+  checkperiod: 60,
+  useClones: false,
+});
+
+const CACHE_KEYS = {
+  WHITELISTED_MARKETS: "whitelisted_markets",
+  MARKET_CONFIGS: "market_configs",
+} as const;
 
 const publicClient = createPublicClient({
   chain: mainnet,
   transport: http(process.env.ETH_RPC_URL),
 });
 
-const tokenAbi = [
-  {
-    name: "decimals",
-    type: "function",
-    inputs: [],
-    outputs: [{ type: "uint8" }],
-    stateMutability: "view",
-  },
-] as const;
+async function batchPositionCalls(positions: any[], marketId: string) {
+  const batches = [];
 
-interface TokenPrices {
-  [address: string]: {
-    price: number;
-    decimals: number;
-  };
+  for (let i = 0; i < positions.length; i += BATCH_SIZE) {
+    const batchPositions = positions.slice(i, i + BATCH_SIZE);
+    const calls = batchPositions.map((position) => ({
+      address: process.env.MORPHO_ADDRESS as `0x${string}`,
+      abi: MorphoAbi,
+      functionName: "position",
+      args: [marketId as `0x${string}`, position.borrower as `0x${string}`],
+    }));
+    batches.push(calls);
+  }
+
+  const results = await Promise.all(
+    batches.map((batch) => publicClient.multicall({ contracts: batch }))
+  );
+
+  return results.flat();
 }
 
-async function fetchTokenPrice(tokenAddress: string): Promise<number> {
-  try {
-    console.log(`[Price] Fetching for ${tokenAddress}`);
+async function getWhitelistedMarkets(): Promise<string[]> {
+  const cachedMarkets = cache.get<string[]>(CACHE_KEYS.WHITELISTED_MARKETS);
+  if (cachedMarkets) {
+    return cachedMarkets;
+  }
 
-    const response = await fetch(
-      `${TOKEN_PRICE_URL}/${tokenAddress}/market_chart?vs_currency=usd&days=7&interval=daily`,
-      {
-        method: "GET",
-        headers: {
-          accept: "application/json",
-          "x-cg-demo-api-key": process.env.COINGECKO_API_KEY ?? "",
-        },
-      }
+  const {
+    markets: { items },
+  } = await apiSdk.getWhitelistedMarketIds({
+    chainId: 1,
+  });
+
+  const marketIds = items?.map(({ uniqueKey }) => uniqueKey) ?? [];
+  cache.set(CACHE_KEYS.WHITELISTED_MARKETS, marketIds);
+
+  return marketIds;
+}
+
+async function getMarketConfigs(c: any): Promise<Map<string, MarketConfig>> {
+  const cachedConfigs = cache.get<Map<string, MarketConfig>>(
+    CACHE_KEYS.MARKET_CONFIGS
+  );
+  if (cachedConfigs) {
+    return cachedConfigs;
+  }
+
+  const markets = await c.db
+    .select()
+    .from(schema.markets)
+    .where(inArray(schema.markets.id, await getWhitelistedMarkets()));
+
+  const marketConfigMap = new Map<string, MarketConfig>(
+    markets.map((market: { id: string }) => [market.id, market])
+  );
+
+  cache.set(CACHE_KEYS.MARKET_CONFIGS, marketConfigMap);
+
+  return marketConfigMap;
+}
+
+ponder.get("/liquidatable", async (c) => {
+  try {
+    const liquidatablePositions = [];
+
+    const marketConfigsStart = performance.now();
+    const marketConfigs = await getMarketConfigs(c);
+    const marketConfigsTime = performance.now() - marketConfigsStart;
+    console.debug(
+      `Fetching market configs took ${marketConfigsTime.toFixed(2)}ms`
     );
 
-    if (!response.ok) {
-      console.error(`[Price] HTTP error for ${tokenAddress}:`, {
-        status: response.status,
-        statusText: response.statusText,
-      });
-      return 0;
-    }
+    for (const [marketId, marketConfig] of marketConfigs.entries()) {
+      const [latestPrice] = await c.db
+        .select()
+        .from(schema.oraclePrices)
+        .where(eq(schema.oraclePrices.oracleAddress, marketConfig.oracle))
+        .orderBy(desc(schema.oraclePrices.blockNumber))
+        .limit(1);
 
-    const data = await response.json();
-    console.log(`[Price] Raw data for ${tokenAddress}:`, data);
-    if (
-      !data ||
-      typeof data !== "object" ||
-      !("prices" in data) ||
-      !Array.isArray(data.prices) ||
-      data.prices.length === 0
-    ) {
-      console.error(`[Price] Invalid data structure for ${tokenAddress}`);
-      return 0;
-    }
-
-    const price = data.prices[data.prices.length - 1]?.[1] ?? 0;
-    console.log(`[Price] Final price for ${tokenAddress}: ${price}`);
-    return price;
-  } catch (error) {
-    console.error(`[Price] Error for ${tokenAddress}:`, error);
-    return 0;
-  }
-}
-
-async function getTokenDecimals(tokenAddress: string): Promise<number> {
-  try {
-    console.log(`[Decimals] Fetching for ${tokenAddress}`);
-    const decimals = await publicClient.readContract({
-      address: tokenAddress as `0x${string}`,
-      abi: tokenAbi,
-      functionName: "decimals",
-    });
-    console.log(`[Decimals] Got ${decimals} for ${tokenAddress}`);
-    return decimals;
-  } catch (error) {
-    console.error(`[Decimals] Error for ${tokenAddress}:`, error);
-    return 18;
-  }
-}
-
-async function getTokenPrices(
-  markets: Array<{ loanToken: string; collateralToken: string }>
-): Promise<TokenPrices> {
-  const uniqueTokens = new Set([
-    ...markets.map((m) => m.loanToken.toLowerCase()),
-    ...markets.map((m) => m.collateralToken.toLowerCase()),
-  ]);
-
-  console.log("[Tokens] Processing unique tokens:", [...uniqueTokens]);
-  const prices: TokenPrices = {};
-
-  for (const address of uniqueTokens) {
-    console.log(`\n[Token] Processing ${address}`);
-
-    try {
-      const [price, decimals] = await Promise.all([
-        fetchTokenPrice(address),
-        getTokenDecimals(address),
-      ]);
-
-      prices[address] = { price, decimals };
-      console.log(`[Token] Completed ${address}:`, prices[address]);
-    } catch (error) {
-      console.error(`[Token] Failed ${address}:`, error);
-    }
-  }
-
-  console.log("\n[Tokens] Final price data:", prices);
-  return prices;
-}
-
-ponder.get("/tvl", async (c) => {
-  try {
-    console.log("\n[Start] Fetching markets");
-    const markets = await c.db.select().from(schema.markets);
-    console.log(
-      `[Markets] Found ${markets.length}:`,
-      markets.map((m) => m.id)
-    );
-
-    console.log("\n[Start] Fetching token data");
-    const tokenPrices = await getTokenPrices(markets);
-
-    let totalMetrics = {
-      totalSupplyUSD: 0,
-      totalCollateralUSD: 0,
-      totalBorrowedUSD: 0,
-    };
-
-    for (const market of markets) {
-      console.log(`\n[Market ${market.id}] Processing`);
-
-      const loanTokenData = tokenPrices[market.loanToken.toLowerCase()];
-      const collateralTokenData =
-        tokenPrices[market.collateralToken.toLowerCase()];
-
-      console.log(`[Market ${market.id}] Token data:`, {
-        loanToken: {
-          address: market.loanToken,
-          data: loanTokenData,
-        },
-        collateralToken: {
-          address: market.collateralToken,
-          data: collateralTokenData,
-        },
-      });
-
-      if (!loanTokenData?.price || !collateralTokenData?.price) {
-        console.log(`[Market ${market.id}] Skipping - Missing price data`);
-        continue;
-      }
-
-      const supplyUnits = Number(
-        formatUnits(market.totalSupplyAssets, loanTokenData.decimals)
-      );
-      const supplyUSD = supplyUnits * loanTokenData.price;
-      console.log(`[Market ${market.id}] Supply:`, {
-        raw: market.totalSupplyAssets.toString(),
-        units: supplyUnits,
-        usd: supplyUSD,
-        decimals: loanTokenData.decimals,
-        price: loanTokenData.price,
-      });
+      if (!latestPrice) continue;
 
       const positions = await c.db
         .select()
         .from(schema.positions)
-        .where(eq(schema.positions.marketId, market.id));
+        .where(eq(schema.positions.marketId, marketId));
 
-      const totalCollateral = positions.reduce(
-        (sum, pos) => sum + pos.collateral,
-        0n
-      );
-      const collateralUnits = Number(
-        formatUnits(totalCollateral, collateralTokenData.decimals)
-      );
-      const collateralUSD = collateralUnits * collateralTokenData.price;
+      // Skip markets with no positions
+      if (positions.length === 0) {
+        console.debug(`Skipping market ${marketId} - no positions found`);
+        continue;
+      }
 
-      console.log(`[Market ${market.id}] Collateral:`, {
-        positions: positions.length,
-        raw: totalCollateral.toString(),
-        units: collateralUnits,
-        usd: collateralUSD,
-        decimals: collateralTokenData.decimals,
-        price: collateralTokenData.price,
+      console.debug(
+        `Processing ${positions.length} positions in market ${marketId}`
+      );
+
+      const marketStateStart = performance.now();
+      const marketStateCall = await publicClient.multicall({
+        contracts: [
+          {
+            address: process.env.MORPHO_ADDRESS as `0x${string}`,
+            abi: MorphoAbi,
+            functionName: "market",
+            args: [marketId as `0x${string}`],
+          },
+        ],
+      });
+      const marketStateTime = performance.now() - marketStateStart;
+      console.debug(`Market state call took ${marketStateTime.toFixed(2)}ms`);
+
+      if (!marketStateCall[0].result) continue;
+
+      const [, , totalBorrowAssets, totalBorrowShares] =
+        marketStateCall[0].result;
+
+      const positionDataStart = performance.now();
+      const positionData = await batchPositionCalls(positions, marketId);
+
+      const processStart = performance.now();
+      const results = positionData.map((data, index) => {
+        if (!data.result) return null;
+
+        const [, borrowSharesStr, collateralStr] = data.result;
+        const borrowShares = BigInt(borrowSharesStr || "0");
+        const collateral = BigInt(collateralStr || "0");
+
+        if (borrowShares === 0n) return null;
+
+        const borrowedAssets = SharesMath.toAssets(
+          borrowShares,
+          totalBorrowAssets,
+          totalBorrowShares,
+          "Up"
+        );
+
+        const borrowedAssetsBigInt = BigInt(borrowedAssets.toString());
+        const priceBigInt = BigInt(latestPrice.price);
+
+        const ltv =
+          (borrowedAssetsBigInt * priceBigInt * WAD) /
+          (collateral * ORACLE_PRICE_SCALE);
+
+        if (ltv <= marketConfig.lltv) return null;
+
+        return {
+          marketId,
+          borrower: positions[index]?.borrower,
+          ltv: ltv.toString(),
+          maxLtv: marketConfig.lltv.toString(),
+          collateral: collateral.toString(),
+          borrowShares: borrowShares.toString(),
+          borrowedAssets: borrowedAssetsBigInt.toString(),
+        };
       });
 
-      const borrowUnits = Number(
-        formatUnits(market.totalBorrowAssets, loanTokenData.decimals)
+      const processTime = performance.now() - processStart;
+      const positionDataTime = performance.now() - positionDataStart;
+
+      console.debug(
+        `Fetching position data took ${positionDataTime.toFixed(2)}ms`
       );
-      const borrowUSD = borrowUnits * loanTokenData.price;
-      console.log(`[Market ${market.id}] Borrow:`, {
-        raw: market.totalBorrowAssets.toString(),
-        units: borrowUnits,
-        usd: borrowUSD,
-        decimals: loanTokenData.decimals,
-        price: loanTokenData.price,
-      });
+      console.debug(
+        `Processing position checks took ${processTime.toFixed(2)}ms`
+      );
 
-      totalMetrics.totalSupplyUSD += supplyUSD;
-      totalMetrics.totalCollateralUSD += collateralUSD;
-      totalMetrics.totalBorrowedUSD += borrowUSD;
-
-      console.log(`[Market ${market.id}] Running totals:`, totalMetrics);
+      liquidatablePositions.push(
+        ...results.filter(
+          (result): result is NonNullable<typeof result> => result !== null
+        )
+      );
     }
 
-    const tvlIncludingBorrows =
-      totalMetrics.totalSupplyUSD + totalMetrics.totalCollateralUSD;
-    const tvlExcludingBorrows =
-      totalMetrics.totalSupplyUSD +
-      (totalMetrics.totalCollateralUSD - totalMetrics.totalBorrowedUSD);
-
-    console.log("\n[Final] Metrics:", {
-      tvlIncludingBorrows,
-      tvlExcludingBorrows,
-      totalBorrowed: totalMetrics.totalBorrowedUSD,
-    });
-
-    return c.json({
-      tvlIncludingBorrows: tvlIncludingBorrows.toString(),
-      tvlExcludingBorrows: tvlExcludingBorrows.toString(),
-      totalBorrowed: totalMetrics.totalBorrowedUSD.toString(),
-    });
+    return c.json(liquidatablePositions);
   } catch (error) {
-    console.error("[Fatal] Error:", error);
+    console.error("Error fetching liquidatable positions:", error);
     return c.text(
-      `Failed to calculate metrics: ${
+      `Failed to fetch liquidatable positions: ${
         error instanceof Error ? error.message : "Unknown error"
       }`,
       500
     );
   }
+});
+
+ponder.get("/liq", async (c) => {
+  const chainId = 1;
+  const { wNative } = getChainAddresses(chainId);
+  const marketIds = await getWhitelistedMarkets();
+
+  const {
+    assetByAddress: { priceUsd: wethPriceUsd },
+    marketPositions: { items: positions },
+  } = await apiSdk.getLiquidatablePositions({
+    chainId,
+    wNative,
+    marketIds,
+  });
+
+  return c.json(positions);
 });

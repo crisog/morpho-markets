@@ -1,7 +1,13 @@
 import { ponder } from "@/generated";
 import * as schema from "../ponder.schema";
+import { IOracleAbi } from "../abis/IOracle";
 
-// Morpho (ETH Mainnet)
+const IGNORED_ORACLE_ADDRESSES = [
+  "0x0000000000000000000000000000000000000000",
+  "0x3A7bB36Ee3f3eE32A60e9f2b33c1e5f2E83ad766",
+  "0x94C2DfA8917F1657a55D1d604fd31C930A10Bca3",
+];
+
 ponder.on("Morpho:CreateMarket", async ({ event, context }) => {
   const { db } = context;
 
@@ -12,282 +18,48 @@ ponder.on("Morpho:CreateMarket", async ({ event, context }) => {
     oracle: event.args.marketParams.oracle,
     irm: event.args.marketParams.irm,
     lltv: event.args.marketParams.lltv,
-    totalBorrowAssets: 0n,
-    totalBorrowShares: 0n,
-    totalSupplyAssets: 0n,
-    totalSupplyShares: 0n,
-    lastUpdate: event.block.timestamp,
   });
-});
 
-ponder.on("Morpho:SupplyCollateral", async ({ event, context }) => {
-  const { db } = context;
-
-  const market = await db.find(schema.markets, { id: event.args.id });
-  if (!market) {
-    throw new Error(
-      `Market ${event.args.id} not found during collateral supply`
-    );
+  if (IGNORED_ORACLE_ADDRESSES.includes(event.args.marketParams.oracle)) {
+    return;
   }
 
-  const existingPosition = await db.sql.query.positions.findFirst({
-    where: (positions, { eq, and }) =>
-      and(
-        eq(positions.marketId, event.args.id),
-        eq(positions.borrower, event.args.onBehalf)
-      ),
-    with: {
-      market: true,
-    },
+  const oraclePrice = await context.client.readContract({
+    address: event.args.marketParams.oracle,
+    abi: IOracleAbi,
+    functionName: "price",
   });
 
   await db
-    .insert(schema.positions)
+    .insert(schema.oraclePrices)
     .values({
-      marketId: event.args.id,
-      borrower: event.args.onBehalf,
-      borrowShares: existingPosition?.borrowShares ?? 0n,
-      collateral: event.args.assets,
-      lastUpdated: event.block.timestamp,
+      oracleAddress: event.args.marketParams.oracle,
+      price: oraclePrice,
+      blockNumber: event.block.number,
     })
-    .onConflictDoUpdate((position) => ({
-      collateral: position.collateral + event.args.assets,
-      lastUpdated: event.block.timestamp,
-    }));
-});
-
-ponder.on("Morpho:WithdrawCollateral", async ({ event, context }) => {
-  const { db } = context;
-
-  await db
-    .insert(schema.positions)
-    .values({
-      marketId: event.args.id,
-      borrower: event.args.onBehalf,
-      borrowShares: 0n,
-      collateral: 0n,
-      lastUpdated: event.block.timestamp,
-    })
-    .onConflictDoUpdate((position) => ({
-      collateral: position.collateral - event.args.assets,
-      lastUpdated: event.block.timestamp,
-    }));
+    .onConflictDoNothing();
 });
 
 ponder.on("Morpho:Supply", async ({ event, context }) => {
   const { db } = context;
 
-  const market = await db.find(schema.markets, { id: event.args.id });
-  if (!market) {
-    throw new Error(`Market ${event.args.id} not found during supply`);
-  }
-
-  await db.insert(schema.marketStates).values({
-    marketId: event.args.id,
-    totalSupplyAssets: event.args.assets,
-    totalSupplyShares: event.args.shares,
-    totalBorrowAssets: 0n,
-    totalBorrowShares: 0n,
-    logIndex: event.log.logIndex,
-    blockNumber: event.block.number,
-    timestamp: event.block.timestamp,
-  });
-
-  await db.update(schema.markets, { id: event.args.id }).set({
-    totalSupplyAssets: market.totalSupplyAssets + event.args.assets,
-    totalSupplyShares: market.totalSupplyShares + event.args.shares,
-    lastUpdate: event.block.timestamp,
-  });
+  await db
+    .insert(schema.positions)
+    .values({
+      marketId: event.args.id,
+      borrower: event.args.onBehalf,
+    })
+    .onConflictDoNothing();
 });
 
 ponder.on("Morpho:Borrow", async ({ event, context }) => {
   const { db } = context;
 
-  const market = await db.find(schema.markets, { id: event.args.id });
-  if (!market) {
-    throw new Error(`Market ${event.args.id} not found during borrow`);
-  }
-
   await db
     .insert(schema.positions)
     .values({
       marketId: event.args.id,
       borrower: event.args.onBehalf,
-      borrowShares: event.args.shares,
-      collateral: 0n,
-      lastUpdated: event.block.timestamp,
     })
-    .onConflictDoUpdate((position) => ({
-      borrowShares: position.borrowShares + event.args.shares,
-      lastUpdated: event.block.timestamp,
-    }));
-
-  await db.insert(schema.marketStates).values({
-    marketId: event.args.id,
-    totalBorrowAssets: event.args.assets,
-    totalBorrowShares: event.args.shares,
-    logIndex: event.log.logIndex,
-    blockNumber: event.block.number,
-    timestamp: event.block.timestamp,
-  });
-
-  await db.update(schema.markets, { id: event.args.id }).set({
-    totalBorrowAssets: market.totalBorrowAssets + event.args.assets,
-    totalBorrowShares: market.totalBorrowShares + event.args.shares,
-    lastUpdate: event.block.timestamp,
-  });
-});
-
-ponder.on("Morpho:Repay", async ({ event, context }) => {
-  const { db } = context;
-
-  const market = await db.find(schema.markets, { id: event.args.id });
-  if (!market) {
-    throw new Error(`Market ${event.args.id} not found during repay`);
-  }
-
-  await db
-    .insert(schema.positions)
-    .values({
-      marketId: event.args.id,
-      borrower: event.args.onBehalf,
-      borrowShares: 0n,
-      collateral: 0n,
-      lastUpdated: event.block.timestamp,
-    })
-    .onConflictDoUpdate((position) => ({
-      borrowShares: position.borrowShares - event.args.shares,
-      lastUpdated: event.block.timestamp,
-    }));
-
-  await db.insert(schema.marketStates).values({
-    marketId: event.args.id,
-    totalBorrowAssets: -event.args.assets,
-    totalBorrowShares: -event.args.shares,
-    logIndex: event.log.logIndex,
-    blockNumber: event.block.number,
-    timestamp: event.block.timestamp,
-  });
-
-  await db.update(schema.markets, { id: event.args.id }).set({
-    totalBorrowAssets: market.totalBorrowAssets - event.args.assets,
-    totalBorrowShares: market.totalBorrowShares - event.args.shares,
-    lastUpdate: event.block.timestamp,
-  });
-});
-
-ponder.on("Morpho:AccrueInterest", async ({ event, context }) => {
-  const { db } = context;
-
-  const market = await db.find(schema.markets, { id: event.args.id });
-  if (!market) {
-    throw new Error(
-      `Market ${event.args.id} not found during accruing interest`
-    );
-  }
-
-  await db.insert(schema.marketStates).values({
-    marketId: event.args.id,
-    totalBorrowAssets: event.args.interest,
-    totalSupplyAssets: event.args.interest,
-    totalBorrowShares: 0n,
-    logIndex: event.log.logIndex,
-    blockNumber: event.block.number,
-    timestamp: event.block.timestamp,
-  });
-
-  const updatedTotalBorrowAssets =
-    market.totalBorrowAssets + event.args.interest;
-  const updatedTotalSupplyAssets =
-    market.totalSupplyAssets + event.args.interest;
-
-  await db.update(schema.markets, { id: event.args.id }).set({
-    totalBorrowAssets: updatedTotalBorrowAssets,
-    totalSupplyAssets: updatedTotalSupplyAssets,
-    lastUpdate: event.block.timestamp,
-  });
-
-  if (event.args.feeShares > 0n) {
-    await db.insert(schema.feeCollections).values({
-      marketId: event.args.id,
-      feeShares: event.args.feeShares,
-      totalSupplyAssets: market.totalSupplyAssets,
-      totalSupplyShares: market.totalSupplyShares,
-      timestamp: event.block.timestamp,
-      blockNumber: event.block.number,
-      logIndex: event.log.logIndex,
-    });
-  }
-});
-
-ponder.on("Morpho:Liquidate", async ({ event, context }) => {
-  const { db } = context;
-
-  const market = await db.find(schema.markets, { id: event.args.id });
-  if (!market) {
-    throw new Error(`Market ${event.args.id} not found during liquidation`);
-  }
-
-  const position = await db.sql.query.positions.findFirst({
-    where: (positions, { eq, and }) =>
-      and(
-        eq(positions.marketId, event.args.id),
-        eq(positions.borrower, event.args.borrower)
-      ),
-    with: {
-      market: {
-        with: {
-          marketStates: {
-            orderBy: (marketStates, { desc }) => [desc(marketStates.timestamp)],
-            limit: 1,
-          },
-        },
-      },
-    },
-  });
-
-  if (!position) {
-    throw new Error(
-      `Position not found for borrower ${event.args.borrower} in market ${event.args.id}`
-    );
-  }
-
-  await db
-    .insert(schema.positions)
-    .values({
-      marketId: event.args.id,
-      borrower: event.args.borrower,
-      borrowShares: 0n,
-      collateral: 0n,
-      lastUpdated: event.block.timestamp,
-    })
-    .onConflictDoUpdate((position) => ({
-      borrowShares:
-        position.borrowShares -
-        event.args.repaidShares -
-        event.args.badDebtShares,
-      collateral: position.collateral - event.args.seizedAssets,
-      lastUpdated: event.block.timestamp,
-    }));
-
-  await db.insert(schema.marketStates).values({
-    marketId: event.args.id,
-    totalBorrowAssets: -(event.args.repaidAssets + event.args.badDebtAssets),
-    totalBorrowShares: -(event.args.repaidShares + event.args.badDebtShares),
-    logIndex: event.log.logIndex,
-    blockNumber: event.block.number,
-    timestamp: event.block.timestamp,
-  });
-
-  await db.update(schema.markets, { id: event.args.id }).set({
-    totalBorrowAssets:
-      market.totalBorrowAssets -
-      event.args.repaidAssets -
-      event.args.badDebtAssets,
-    totalBorrowShares:
-      market.totalBorrowShares -
-      event.args.repaidShares -
-      event.args.badDebtShares,
-    lastUpdate: event.block.timestamp,
-  });
+    .onConflictDoNothing();
 });
