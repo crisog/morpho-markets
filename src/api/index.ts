@@ -61,7 +61,11 @@ ponder.get("/liquidatable", async (c) => {
 
   for (const marketId of marketIds) {
     const market = await c.db.query.markets.findFirst({
-      where: eq(schema.markets.id, marketId),
+      where: (_markets, { and }) =>
+        and(
+          eq(schema.markets.id, marketId),
+          eq(schema.markets.chainId, chainId)
+        ),
     });
 
     if (!market) {
