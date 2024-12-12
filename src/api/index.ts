@@ -1,7 +1,11 @@
 import { ponder } from "@/generated";
 import * as schema from "../../ponder.schema";
 import { eq, graphql } from "@ponder/core";
-import { getTokenPrices, getWhitelistedMarkets } from "./utils";
+import {
+  getTokenPrices,
+  getWethPriceUsd,
+  getWhitelistedMarkets,
+} from "./utils";
 import { WAD, ORACLE_PRICE_SCALE, IGNORED_ORACLES } from "../constants";
 ponder.use("/", graphql());
 ponder.use("/graphql", graphql());
@@ -160,8 +164,11 @@ ponder.get("/liquidatable", async (c) => {
     `\nFound ${liquidatablePositions.length} liquidatable positions in total`
   );
 
+  const wethPriceUsd = await getWethPriceUsd();
+
   return c.json({
     timestamp: Date.now(),
+    wethPriceUsd,
     positions: liquidatablePositions,
   });
 });
