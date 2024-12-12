@@ -1,7 +1,7 @@
 <div align="center">
     <img src=".github/morpho.png" alt="Morpho logo" width="600"/>
-    <h1>Morpho Markets 📊</h1>
-    <big>Indexes all the markets created on Morpho Blue</big>
+    <h1>Morpho Watcher 🕵</h1>
+    <big>Indexes all liquidatable positions on Morpho Blue</big>
     <div>
     <br/>
         <a href="https://github.com/crisog/morpho-markets/pulse"><img src="https://img.shields.io/github/last-commit/crisog/morpho-markets.svg"/></a>
