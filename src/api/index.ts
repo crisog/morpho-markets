@@ -46,7 +46,9 @@ interface LiquidatablePosition {
 }
 
 ponder.get("/liquidatable", async (c) => {
-  const marketIds = await getWhitelistedMarkets();
+  const chainId = Number(c.req.query("chainId")) || 1; // default to mainnet
+
+  const marketIds = await getWhitelistedMarkets(chainId);
 
   if (!marketIds.length) {
     return c.json({
@@ -167,6 +169,7 @@ ponder.get("/liquidatable", async (c) => {
   const wethPriceUsd = await getWethPriceUsd();
 
   return c.json({
+    chainId,
     timestamp: Date.now(),
     wethPriceUsd,
     positions: liquidatablePositions,

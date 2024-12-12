@@ -45,5 +45,10 @@ export default createConfig({
       startBlock: 21385995,
       interval: 1,
     },
+    OracleUpdatesBase: {
+      network: "base",
+      startBlock: 23611953,
+      interval: 1,
+    },
   },
 });

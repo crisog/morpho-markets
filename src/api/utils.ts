@@ -149,7 +149,9 @@ export async function getTokenPrices(
   return prices;
 }
 
-export async function getWhitelistedMarkets(): Promise<string[]> {
+export async function getWhitelistedMarkets(
+  chainId: number
+): Promise<string[]> {
   const cachedMarkets = caches.markets.get<string[]>("whitelisted_markets");
   if (cachedMarkets) return cachedMarkets;
 
@@ -157,7 +159,7 @@ export async function getWhitelistedMarkets(): Promise<string[]> {
     const {
       markets: { items },
     } = await apiSdk.getWhitelistedMarketIds({
-      chainId: CONFIG.CHAIN_ID,
+      chainId,
     });
 
     const marketIds = items?.map(({ uniqueKey }) => uniqueKey) ?? [];
