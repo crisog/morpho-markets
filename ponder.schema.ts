@@ -1,15 +1,22 @@
 import { onchainTable, primaryKey } from "@ponder/core";
 
-export const markets = onchainTable("markets", (t) => ({
-  id: t.text().primaryKey(),
-  oracle: t.text().notNull(),
-  lltv: t.bigint().notNull(),
-  irm: t.text().notNull(),
-  collateralToken: t.text().notNull(),
-  loanToken: t.text().notNull(),
-  totalBorrowAssets: t.bigint().notNull(),
-  totalBorrowShares: t.bigint().notNull(),
-}));
+export const markets = onchainTable(
+  "markets",
+  (t) => ({
+    id: t.text().notNull(),
+    chainId: t.integer().notNull(),
+    oracle: t.text().notNull(),
+    lltv: t.bigint().notNull(),
+    irm: t.text().notNull(),
+    collateralToken: t.text().notNull(),
+    loanToken: t.text().notNull(),
+    totalBorrowAssets: t.bigint().notNull(),
+    totalBorrowShares: t.bigint().notNull(),
+  }),
+  (table) => ({
+    pk: primaryKey({ columns: [table.id, table.chainId] }),
+  })
+);
 
 export const positions = onchainTable(
   "positions",

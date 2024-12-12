@@ -9,6 +9,7 @@ ponder.on("Morpho:CreateMarket", async ({ event, context }) => {
 
   await db.insert(schema.markets).values({
     id: event.args.id,
+    chainId: context.network.chainId,
     oracle: event.args.marketParams.oracle,
     lltv: event.args.marketParams.lltv,
     irm: event.args.marketParams.irm,
@@ -54,7 +55,10 @@ ponder.on("Morpho:WithdrawCollateral", async ({ event, context }) => {
 ponder.on("Morpho:Borrow", async ({ event, context }) => {
   const { db } = context;
 
-  const market = await db.find(schema.markets, { id: event.args.id });
+  const market = await db.find(schema.markets, {
+    id: event.args.id,
+    chainId: context.network.chainId,
+  });
   if (!market)
     throw new Error(`Market ${event.args.id} not found during borrow`);
 
@@ -70,16 +74,24 @@ ponder.on("Morpho:Borrow", async ({ event, context }) => {
       borrowShares: position.borrowShares + event.args.shares,
     }));
 
-  await db.update(schema.markets, { id: event.args.id }).set({
-    totalBorrowAssets: market.totalBorrowAssets + event.args.assets,
-    totalBorrowShares: market.totalBorrowShares + event.args.shares,
-  });
+  await db
+    .update(schema.markets, {
+      id: event.args.id,
+      chainId: context.network.chainId,
+    })
+    .set({
+      totalBorrowAssets: market.totalBorrowAssets + event.args.assets,
+      totalBorrowShares: market.totalBorrowShares + event.args.shares,
+    });
 });
 
 ponder.on("Morpho:Repay", async ({ event, context }) => {
   const { db } = context;
 
-  const market = await db.find(schema.markets, { id: event.args.id });
+  const market = await db.find(schema.markets, {
+    id: event.args.id,
+    chainId: context.network.chainId,
+  });
   if (!market)
     throw new Error(`Market ${event.args.id} not found during repay`);
 
@@ -95,10 +107,15 @@ ponder.on("Morpho:Repay", async ({ event, context }) => {
       borrowShares: position.borrowShares - event.args.shares,
     }));
 
-  await db.update(schema.markets, { id: event.args.id }).set({
-    totalBorrowAssets: market.totalBorrowAssets - event.args.assets,
-    totalBorrowShares: market.totalBorrowShares - event.args.shares,
-  });
+  await db
+    .update(schema.markets, {
+      id: event.args.id,
+      chainId: context.network.chainId,
+    })
+    .set({
+      totalBorrowAssets: market.totalBorrowAssets - event.args.assets,
+      totalBorrowShares: market.totalBorrowShares - event.args.shares,
+    });
 });
 
 ponder.on("OracleUpdates:block", async ({ event, context }) => {
