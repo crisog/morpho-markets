@@ -10,7 +10,7 @@ import { WAD, ORACLE_PRICE_SCALE, IGNORED_ORACLES } from "../constants";
 ponder.use("/", graphql());
 ponder.use("/graphql", graphql());
 
-interface Token {
+interface Asset {
   address: string;
   decimals?: number;
   symbol?: string;
@@ -23,12 +23,12 @@ interface UserData {
 
 interface MarketData {
   id: string;
-  irm: string;
+  irmAddress: string;
   lltv: string;
-  oracle: string;
+  oracleAddress: string;
   oraclePrice: string;
-  collateralToken: Token;
-  loanToken: Token;
+  collateralAsset: Asset;
+  loanAsset: Asset;
   totalBorrowAssets: string;
   totalBorrowShares: string;
 }
@@ -103,16 +103,16 @@ ponder.get("/liquidatable", async (c) => {
           },
           market: {
             id: market.id,
-            oracle: market.oracle,
-            irm: market.irm,
+            oracleAddress: market.oracle,
+            irmAddress: market.irm,
             lltv: market.lltv.toString(),
             totalBorrowAssets: market.totalBorrowAssets.toString(),
             totalBorrowShares: market.totalBorrowShares.toString(),
             oraclePrice: latestPrice.price.toString(),
-            collateralToken: {
+            collateralAsset: {
               address: market.collateralToken,
             },
-            loanToken: {
+            loanAsset: {
               address: market.loanToken,
             },
           },
@@ -129,20 +129,20 @@ ponder.get("/liquidatable", async (c) => {
   if (liquidatablePositions.length) {
     const tokenPrices = await getTokenPrices(
       liquidatablePositions.map(({ market }) => ({
-        loanToken: market.loanToken.address,
-        collateralToken: market.collateralToken.address,
+        loanToken: market.loanAsset.address,
+        collateralToken: market.collateralAsset.address,
       }))
     );
 
     for (const position of liquidatablePositions) {
       const collateralInfo =
-        tokenPrices[position.market.collateralToken.address.toLowerCase()];
+        tokenPrices[position.market.collateralAsset.address.toLowerCase()];
       const loanInfo =
-        tokenPrices[position.market.loanToken.address.toLowerCase()];
+        tokenPrices[position.market.loanAsset.address.toLowerCase()];
 
       if (collateralInfo) {
-        position.market.collateralToken = {
-          ...position.market.collateralToken,
+        position.market.collateralAsset = {
+          ...position.market.collateralAsset,
           decimals: collateralInfo.decimals,
           symbol: collateralInfo.symbol,
           priceUsd: collateralInfo.price,
@@ -150,8 +150,8 @@ ponder.get("/liquidatable", async (c) => {
       }
 
       if (loanInfo) {
-        position.market.loanToken = {
-          ...position.market.loanToken,
+        position.market.loanAsset = {
+          ...position.market.loanAsset,
           decimals: loanInfo.decimals,
           symbol: loanInfo.symbol,
           priceUsd: loanInfo.price,
