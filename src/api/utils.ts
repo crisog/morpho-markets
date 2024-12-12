@@ -31,7 +31,6 @@ interface TokenInfo {
   symbol: string;
 }
 
-// Initialize Ethereum client
 const publicClient = createPublicClient({
   chain: mainnet,
   transport: http(process.env.ETH_RPC_URL),
@@ -178,22 +177,4 @@ export async function getWhitelistedMarkets(): Promise<string[]> {
     console.error("[Markets] Error fetching whitelisted markets:", error);
     return [];
   }
-}
-
-export async function isPositionLiquidatable(
-  market: typeof schema.markets.$inferSelect,
-  position: typeof schema.positions.$inferSelect,
-  oraclePrice: bigint
-): Promise<boolean> {
-  if (position.borrowShares === 0n) return false;
-
-  const borrowed =
-    (position.borrowShares * market.totalBorrowAssets) /
-    market.totalBorrowShares;
-
-  const currentLTV =
-    (borrowed * oraclePrice) /
-    (position.collateral * CONFIG.ORACLE_PRICE_SCALE);
-
-  return currentLTV > market.lltv;
 }
