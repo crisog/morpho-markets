@@ -2,14 +2,7 @@ import { createPublicClient, http } from "viem";
 import { mainnet } from "viem/chains";
 import NodeCache from "node-cache";
 import { apiSdk } from "@morpho-org/blue-sdk-ethers-liquidation";
-
-const CONFIG = {
-  TOKEN_PRICE_URL: "https://api.coingecko.com/api/v3/coins/ethereum/contract",
-  CHAIN_ID: 1,
-  ORACLE_PRICE_SCALE: BigInt(1e36),
-  DEFAULT_DECIMALS: 18,
-  ZERO_ADDRESS: "0x0000000000000000000000000000000000000000",
-} as const;
+import { CONFIG, IGNORED_TOKENS } from "../constants";
 
 const caches = {
   tokenInfo: new NodeCache({ stdTTL: 24 * 60 * 60, checkperiod: 60 * 60 }), // 24h TTL, 1h check
@@ -52,7 +45,7 @@ const tokenAbi = [
 ] as const;
 
 async function fetchTokenPrice(tokenAddress: string): Promise<number> {
-  if (tokenAddress === CONFIG.ZERO_ADDRESS) return 0;
+  if (IGNORED_TOKENS.includes(tokenAddress)) return 0;
 
   const cacheKey = `price_${tokenAddress.toLowerCase()}`;
   const cachedPrice = caches.prices.get<number>(cacheKey);
@@ -89,9 +82,7 @@ async function fetchTokenPrice(tokenAddress: string): Promise<number> {
 }
 
 async function fetchTokenInfo(tokenAddress: string): Promise<TokenInfo> {
-  if (tokenAddress === CONFIG.ZERO_ADDRESS) {
-    return { decimals: 0, symbol: "" };
-  }
+  if (IGNORED_TOKENS.includes(tokenAddress)) return { decimals: 0, symbol: "" };
 
   const cacheKey = `info_${tokenAddress.toLowerCase()}`;
   const cachedInfo = caches.tokenInfo.get<TokenInfo>(cacheKey);

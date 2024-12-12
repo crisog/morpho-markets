@@ -1,6 +1,7 @@
 import { ponder } from "@/generated";
 import * as schema from "../ponder.schema";
 import { IOracleAbi } from "../abis/IOracle";
+import { IGNORED_ORACLES } from "./constants";
 
 // Morpho (ETH Mainnet)
 ponder.on("Morpho:CreateMarket", async ({ event, context }) => {
@@ -10,6 +11,9 @@ ponder.on("Morpho:CreateMarket", async ({ event, context }) => {
     id: event.args.id,
     oracle: event.args.marketParams.oracle,
     lltv: event.args.marketParams.lltv,
+    irm: event.args.marketParams.irm,
+    collateralToken: event.args.marketParams.collateralToken,
+    loanToken: event.args.marketParams.loanToken,
     totalBorrowAssets: 0n,
     totalBorrowShares: 0n,
   });
@@ -51,7 +55,8 @@ ponder.on("Morpho:Borrow", async ({ event, context }) => {
   const { db } = context;
 
   const market = await db.find(schema.markets, { id: event.args.id });
-  if (!market) throw new Error(`Market ${event.args.id} not found during borrow`);
+  if (!market)
+    throw new Error(`Market ${event.args.id} not found during borrow`);
 
   await db
     .insert(schema.positions)
@@ -75,7 +80,8 @@ ponder.on("Morpho:Repay", async ({ event, context }) => {
   const { db } = context;
 
   const market = await db.find(schema.markets, { id: event.args.id });
-  if (!market) throw new Error(`Market ${event.args.id} not found during repay`);
+  if (!market)
+    throw new Error(`Market ${event.args.id} not found during repay`);
 
   await db
     .insert(schema.positions)
@@ -94,12 +100,6 @@ ponder.on("Morpho:Repay", async ({ event, context }) => {
     totalBorrowShares: market.totalBorrowShares - event.args.shares,
   });
 });
-
-const IGNORED_ORACLES = [
-  "0x3A7bB36Ee3f3eE32A60e9f2b33c1e5f2E83ad766",
-  "0x94C2DfA8917F1657a55D1d604fd31C930A10Bca3",
-  "0x0000000000000000000000000000000000000000",
-];
 
 ponder.on("OracleUpdates:block", async ({ event, context }) => {
   const markets = await context.db.sql.select().from(schema.markets);

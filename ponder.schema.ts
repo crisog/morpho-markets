@@ -4,6 +4,9 @@ export const markets = onchainTable("markets", (t) => ({
   id: t.text().primaryKey(),
   oracle: t.text().notNull(),
   lltv: t.bigint().notNull(),
+  irm: t.text().notNull(),
+  collateralToken: t.text().notNull(),
+  loanToken: t.text().notNull(),
   totalBorrowAssets: t.bigint().notNull(),
   totalBorrowShares: t.bigint().notNull(),
 }));

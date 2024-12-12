@@ -1,24 +1,44 @@
 import { ponder } from "@/generated";
 import * as schema from "../../ponder.schema";
 import { eq, graphql } from "@ponder/core";
-import { getWhitelistedMarkets } from "./utils";
-
+import { getTokenPrices, getWhitelistedMarkets } from "./utils";
+import { WAD, ORACLE_PRICE_SCALE, IGNORED_ORACLES } from "../constants";
 ponder.use("/", graphql());
 ponder.use("/graphql", graphql());
 
-const WAD = 1000000000000000000n; // 1e18
-const ORACLE_PRICE_SCALE = 1000000000000000000000000000000000000n; // 1e36
+interface Token {
+  address: string;
+  decimals?: number;
+  symbol?: string;
+  priceUsd?: number;
+}
 
-interface LiquidatablePosition {
-  borrower: string;
-  marketId: string;
-  collateral: string;
-  borrowShares: string;
-  marketPrice: string;
+interface UserData {
+  address: string;
+}
+
+interface MarketData {
+  id: string;
+  irm: string;
   lltv: string;
+  oracle: string;
+  oraclePrice: string;
+  collateralToken: Token;
+  loanToken: Token;
   totalBorrowAssets: string;
   totalBorrowShares: string;
+}
+
+interface PositionData {
+  collateral: string;
+  borrowShares: string;
   currentLtv: string;
+}
+
+interface LiquidatablePosition {
+  user: UserData;
+  market: MarketData;
+  position: PositionData;
 }
 
 ponder.get("/liquidatable", async (c) => {
@@ -48,6 +68,8 @@ ponder.get("/liquidatable", async (c) => {
       orderBy: (oraclePrices, { desc }) => [desc(oraclePrices.blockNumber)],
     });
 
+    if (IGNORED_ORACLES.includes(market.oracle)) continue;
+
     if (!latestPrice) {
       console.log(`No price found for oracle ${market.oracle}`);
       continue;
@@ -66,23 +88,70 @@ ponder.get("/liquidatable", async (c) => {
       const borrowed =
         (position.borrowShares * market.totalBorrowAssets) /
         market.totalBorrowShares;
-
       const collateralValueInLoanAssets =
         (position.collateral * latestPrice.price) / ORACLE_PRICE_SCALE;
       const currentLtv = (borrowed * WAD) / collateralValueInLoanAssets;
 
       if (borrowed > maxBorrow) {
         liquidatablePositions.push({
-          borrower: position.borrower,
-          marketId: market.id,
-          collateral: position.collateral.toString(),
-          borrowShares: position.borrowShares.toString(),
-          marketPrice: latestPrice.price.toString(),
-          lltv: market.lltv.toString(),
-          currentLtv: currentLtv.toString(),
-          totalBorrowAssets: market.totalBorrowAssets.toString(),
-          totalBorrowShares: market.totalBorrowShares.toString(),
+          user: {
+            address: position.borrower,
+          },
+          market: {
+            id: market.id,
+            oracle: market.oracle,
+            irm: market.irm,
+            lltv: market.lltv.toString(),
+            totalBorrowAssets: market.totalBorrowAssets.toString(),
+            totalBorrowShares: market.totalBorrowShares.toString(),
+            oraclePrice: latestPrice.price.toString(),
+            collateralToken: {
+              address: market.collateralToken,
+            },
+            loanToken: {
+              address: market.loanToken,
+            },
+          },
+          position: {
+            collateral: position.collateral.toString(),
+            borrowShares: position.borrowShares.toString(),
+            currentLtv: currentLtv.toString(),
+          },
         });
+      }
+    }
+  }
+
+  if (liquidatablePositions.length) {
+    const tokenPrices = await getTokenPrices(
+      liquidatablePositions.map(({ market }) => ({
+        loanToken: market.loanToken.address,
+        collateralToken: market.collateralToken.address,
+      }))
+    );
+
+    for (const position of liquidatablePositions) {
+      const collateralInfo =
+        tokenPrices[position.market.collateralToken.address.toLowerCase()];
+      const loanInfo =
+        tokenPrices[position.market.loanToken.address.toLowerCase()];
+
+      if (collateralInfo) {
+        position.market.collateralToken = {
+          ...position.market.collateralToken,
+          decimals: collateralInfo.decimals,
+          symbol: collateralInfo.symbol,
+          priceUsd: collateralInfo.price,
+        };
+      }
+
+      if (loanInfo) {
+        position.market.loanToken = {
+          ...position.market.loanToken,
+          decimals: loanInfo.decimals,
+          symbol: loanInfo.symbol,
+          priceUsd: loanInfo.price,
+        };
       }
     }
   }
