@@ -1,7 +1,6 @@
 import { createPublicClient, http } from "viem";
 import { mainnet } from "viem/chains";
 import NodeCache from "node-cache";
-import * as schema from "../../ponder.schema";
 import { apiSdk } from "@morpho-org/blue-sdk-ethers-liquidation";
 
 const CONFIG = {
