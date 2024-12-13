@@ -2,11 +2,13 @@ import { ponder } from "@/generated";
 import * as schema from "../../ponder.schema";
 import { eq, graphql } from "@ponder/core";
 import {
+  getOraclePrice,
   getTokenPrices,
   getWethPriceUsd,
   getWhitelistedMarkets,
 } from "./utils";
-import { WAD, ORACLE_PRICE_SCALE, IGNORED_ORACLES } from "../constants";
+import { MathLib, SharesMath } from "@morpho-org/blue-sdk";
+import { ORACLE_PRICE_SCALE, IGNORED_ORACLES } from "../constants";
 ponder.use("/", graphql());
 ponder.use("/graphql", graphql());
 
@@ -50,12 +52,22 @@ ponder.get("/liquidatable", async (c) => {
 
   const marketIds = await getWhitelistedMarkets(chainId);
 
+  if (chainId === 11155111) {
+    marketIds.push(
+      "0x7324da61dcc1954f58ee06104b7d966d80e807c81ff4950698853d15210d256e"
+    );
+  }
+
   if (!marketIds.length) {
     return c.json({
+      chainId,
       timestamp: Date.now(),
+      wethPriceUsd: 0,
       positions: [],
     });
   }
+
+  console.info(`[Liquidatable] Processing ${marketIds.length} markets`);
 
   const liquidatablePositions: LiquidatablePosition[] = [];
 
@@ -69,11 +81,11 @@ ponder.get("/liquidatable", async (c) => {
     });
 
     if (!market) {
-      console.log(`Market ${marketId} not found in database`);
+      console.info(`Market ${marketId} not found in database`);
       continue;
     }
 
-    const latestPrice = await c.db.query.oraclePrices.findFirst({
+    let latestPrice = await c.db.query.oraclePrices.findFirst({
       where: eq(schema.oraclePrices.oracleAddress, market.oracle),
       orderBy: (oraclePrices, { desc }) => [desc(oraclePrices.blockNumber)],
     });
@@ -81,8 +93,19 @@ ponder.get("/liquidatable", async (c) => {
     if (IGNORED_ORACLES.includes(market.oracle)) continue;
 
     if (!latestPrice) {
-      console.log(`No price found for oracle ${market.oracle}`);
-      continue;
+      const oraclePriceResponse = await getOraclePrice(market.oracle, chainId);
+      if (oraclePriceResponse) {
+        latestPrice = {
+          oracleAddress: market.oracle,
+          price: oraclePriceResponse.price,
+          blockNumber: oraclePriceResponse.blockNumber,
+        };
+      }
+
+      if (!latestPrice) {
+        console.info(`No price found for oracle ${market.oracle}`);
+        continue;
+      }
     }
 
     const positions = await c.db.query.positions.findMany({
@@ -91,18 +114,32 @@ ponder.get("/liquidatable", async (c) => {
     });
 
     for (const position of positions) {
-      const maxBorrow =
-        (((position.collateral * latestPrice.price) / ORACLE_PRICE_SCALE) *
-          market.lltv) /
-        WAD;
-      const borrowed =
-        (position.borrowShares * market.totalBorrowAssets) /
-        market.totalBorrowShares;
-      const collateralValueInLoanAssets =
-        (position.collateral * latestPrice.price) / ORACLE_PRICE_SCALE;
-      const currentLtv = (borrowed * WAD) / collateralValueInLoanAssets;
+      if (position.collateral == 0n) {
+        console.info(
+          `Skipping position ${position.borrower} in market ${market.id} - appears to be fully liquidated (zero collateral with ${position.borrowShares} borrowShares)`
+        );
+        continue;
+      }
 
-      if (borrowed > maxBorrow) {
+      const borrowed = SharesMath.toAssets(
+        position.borrowShares,
+        market.totalBorrowAssets,
+        market.totalBorrowShares,
+        "Up"
+      );
+      const collateralValueInLoanAssets = MathLib.mulDivDown(
+        position.collateral,
+        latestPrice.price,
+        ORACLE_PRICE_SCALE
+      );
+      const maxBorrow = MathLib.wMulDown(
+        collateralValueInLoanAssets,
+        market.lltv
+      );
+      const isLiquidatable = borrowed > maxBorrow;
+      const currentLtv = MathLib.wDivUp(borrowed, collateralValueInLoanAssets);
+
+      if (isLiquidatable) {
         liquidatablePositions.push({
           user: {
             address: position.borrower,
@@ -167,7 +204,7 @@ ponder.get("/liquidatable", async (c) => {
     }
   }
 
-  console.log(
+  console.info(
     `\nFound ${liquidatablePositions.length} liquidatable positions in total`
   );
 

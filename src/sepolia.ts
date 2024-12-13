@@ -4,8 +4,8 @@ import { MorphoAbi } from "../abis/Morpho";
 import { IOracleAbi } from "../abis/IOracle";
 import { IGNORED_ORACLES } from "./constants";
 
-// Morpho (Base Mainnet)
-ponder.on("MorphoBase:CreateMarket", async ({ event, context }) => {
+// Morpho (ETH Mainnet)
+ponder.on("MorphoSepolia:CreateMarket", async ({ event, context }) => {
   const { db } = context;
 
   await db
@@ -24,7 +24,7 @@ ponder.on("MorphoBase:CreateMarket", async ({ event, context }) => {
     .onConflictDoNothing();
 });
 
-ponder.on("MorphoBase:SupplyCollateral", async ({ event, context }) => {
+ponder.on("MorphoSepolia:SupplyCollateral", async ({ event, context }) => {
   const { db } = context;
 
   await db
@@ -40,7 +40,7 @@ ponder.on("MorphoBase:SupplyCollateral", async ({ event, context }) => {
     }));
 });
 
-ponder.on("MorphoBase:WithdrawCollateral", async ({ event, context }) => {
+ponder.on("MorphoSepolia:WithdrawCollateral", async ({ event, context }) => {
   const { db } = context;
 
   const position = await db.find(schema.positions, {
@@ -64,7 +64,7 @@ ponder.on("MorphoBase:WithdrawCollateral", async ({ event, context }) => {
     });
 });
 
-ponder.on("MorphoBase:Borrow", async ({ event, context }) => {
+ponder.on("MorphoSepolia:Borrow", async ({ event, context }) => {
   const { db } = context;
 
   const position = await db.find(schema.positions, {
@@ -88,7 +88,7 @@ ponder.on("MorphoBase:Borrow", async ({ event, context }) => {
     });
 });
 
-ponder.on("MorphoBase:Repay", async ({ event, context }) => {
+ponder.on("MorphoSepolia:Repay", async ({ event, context }) => {
   const { db } = context;
 
   const position = await db.find(schema.positions, {
@@ -112,7 +112,7 @@ ponder.on("MorphoBase:Repay", async ({ event, context }) => {
     });
 });
 
-ponder.on("MorphoBase:Liquidate", async ({ event, context }) => {
+ponder.on("MorphoSepolia:Liquidate", async ({ event, context }) => {
   const { db } = context;
 
   await db
@@ -129,7 +129,7 @@ ponder.on("MorphoBase:Liquidate", async ({ event, context }) => {
     }));
 });
 
-ponder.on("MarketStateUpdatesBase:block", async ({ event, context }) => {
+ponder.on("MarketStateUpdatesSepolia:block", async ({ event, context }) => {
   const { db } = context;
 
   const markets = await db.sql.select().from(schema.markets);
@@ -161,7 +161,7 @@ ponder.on("MarketStateUpdatesBase:block", async ({ event, context }) => {
   }
 });
 
-ponder.on("OracleUpdatesBase:block", async ({ event, context }) => {
+ponder.on("OracleUpdatesSepolia:block", async ({ event, context }) => {
   const { db } = context;
 
   const markets = await db.sql.select().from(schema.markets);

@@ -3,6 +3,7 @@ import { mainnet, sepolia, base } from "viem/chains";
 import NodeCache from "node-cache";
 import { apiSdk } from "@morpho-org/blue-sdk-ethers-liquidation";
 import { CONFIG, IGNORED_TOKENS, CHAIN_TOKENS } from "../constants";
+import { IOracleAbi } from "../../abis/IOracle";
 
 const caches = {
   tokenInfo: new NodeCache({ stdTTL: 24 * 60 * 60, checkperiod: 60 * 60 }), // 24h TTL, 1h check
@@ -66,6 +67,29 @@ async function fetchTokenPrice(
 ): Promise<number> {
   if (IGNORED_TOKENS.includes(tokenAddress)) return 0;
 
+  // Morpho Sepolia Mock Prices
+  if (chainId === 11155111) {
+    if (
+      tokenAddress.toLowerCase() ===
+      "0x990ab7BD0AD072926Fa422862F628356d4328656".toLowerCase()
+    ) {
+      return 100;
+    }
+    if (
+      tokenAddress.toLowerCase() ===
+      "0x6e9101634dfd5ef90d5a50b07ce085b7758ed0eb".toLowerCase()
+    ) {
+      return 93.75;
+    }
+
+    if (
+      tokenAddress.toLowerCase() ===
+      "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9".toLowerCase()
+    ) {
+      return 3800;
+    }
+  }
+
   const cacheKey = `price_${chainId}_${tokenAddress.toLowerCase()}`;
   const cachedPrice = caches.prices.get<number>(cacheKey);
   if (cachedPrice !== undefined) return cachedPrice;
@@ -105,6 +129,22 @@ async function fetchTokenInfo(
   chainId: number
 ): Promise<TokenInfo> {
   if (IGNORED_TOKENS.includes(tokenAddress)) return { decimals: 0, symbol: "" };
+
+  // Morpho Sepolia Mock Info
+  if (chainId === 11155111) {
+    if (
+      tokenAddress.toLowerCase() ===
+      "0x990ab7BD0AD072926Fa422862F628356d4328656".toLowerCase()
+    ) {
+      return { decimals: 18, symbol: "LNT" };
+    }
+    if (
+      tokenAddress.toLowerCase() ===
+      "0x6e9101634dfd5ef90d5a50b07ce085b7758ed0eb".toLowerCase()
+    ) {
+      return { decimals: 18, symbol: "CLT" };
+    }
+  }
 
   const cacheKey = `info_${chainId}_${tokenAddress.toLowerCase()}`;
   const cachedInfo = caches.tokenInfo.get<TokenInfo>(cacheKey);
@@ -202,3 +242,27 @@ export async function getWethPriceUsd(chainId: number): Promise<number> {
   }
   return await fetchTokenPrice(wethAddress, chainId);
 }
+
+export const getOraclePrice = async (
+  oracleAddress: string,
+  chainId: number
+): Promise<{ price: bigint; blockNumber: bigint } | null> => {
+  try {
+    const client = getPublicClient(chainId);
+
+    const blockNumber = await client.getBlockNumber();
+    const price = await client.readContract({
+      address: oracleAddress as `0x${string}`,
+      abi: IOracleAbi,
+      functionName: "price",
+      blockNumber,
+    });
+    return { price, blockNumber };
+  } catch (error) {
+    console.error(
+      `Failed to fetch live price from oracle ${oracleAddress}:`,
+      error
+    );
+    return null;
+  }
+};
