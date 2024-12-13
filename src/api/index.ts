@@ -213,54 +213,57 @@ ponder.get("/liquidatable", async (c) => {
     }
   }
 
-  const {
-    marketPositions: { items: morphoBluePositions },
-  } = await apiSdk.getLiquidatablePositions({
-    chainId,
-    wNative: CHAIN_TOKENS[chainId as keyof typeof CHAIN_TOKENS].WETH,
-    marketIds,
-  });
+  // Morpho Blue API does not support Sepolia
+  if (chainId === 11155111) {
+    const {
+      marketPositions: { items: morphoBluePositions },
+    } = await apiSdk.getLiquidatablePositions({
+      chainId,
+      wNative: CHAIN_TOKENS[chainId as keyof typeof CHAIN_TOKENS].WETH,
+      marketIds,
+    });
 
-  // These positions show up on Morpho Blue API as liquidatable, but for us they are healthy
-  const missingPositions = morphoBluePositions?.filter(
-    (position) =>
-      !liquidatablePositions.some(
-        (p) =>
-          p.user.address === position.user.address &&
-          p.market.loanAsset.address === position.market.loanAsset.address &&
-          p.market.collateralAsset?.address ===
-            position.market.collateralAsset?.address
-      )
-  );
-
-  if (missingPositions?.length) {
-    console.info(
-      `Found ${missingPositions.length} missing positions in Morpho Blue API`
+    // These positions show up on Morpho Blue API as liquidatable, but for us they are healthy
+    const missingPositions = morphoBluePositions?.filter(
+      (position) =>
+        !liquidatablePositions.some(
+          (p) =>
+            p.user.address === position.user.address &&
+            p.market.loanAsset.address === position.market.loanAsset.address &&
+            p.market.collateralAsset?.address ===
+              position.market.collateralAsset?.address
+        )
     );
 
-    for (const position of missingPositions) {
-      const nonLiquidatable = nonLiquidatablePositions.find(
-        (p) =>
-          p.user.address === position.user.address &&
-          p.market.loanAsset.address === position.market.loanAsset.address &&
-          p.market.collateralAsset?.address ===
-            position.market.collateralAsset?.address
-      );
-
-      if (!nonLiquidatable) continue;
-
+    if (missingPositions?.length) {
       console.info(
-        `Position details for ${nonLiquidatable?.user.address}:`,
-        `\n- Collateral Token: ${nonLiquidatable?.market.collateralAsset?.address}`,
-        `\n- Loan Token: ${nonLiquidatable?.market.loanAsset.address}`,
-        `\n- Position Borrow Shares: ${nonLiquidatable?.position.borrowShares}`,
-        `\n- Position Collateral: ${nonLiquidatable?.position.collateral}`,
-        `\n- Position Current LTV: ${nonLiquidatable?.position.currentLtv}`,
-        `\n- Market LLTV: ${nonLiquidatable?.market.lltv}`,
-        `\n- Market Total Borrow Assets: ${nonLiquidatable?.market.totalBorrowAssets}`,
-        `\n- Market Total Borrow Shares: ${nonLiquidatable?.market.totalBorrowShares}`,
-        `\n`
+        `Found ${missingPositions.length} missing positions in Morpho Blue API`
       );
+
+      for (const position of missingPositions) {
+        const nonLiquidatable = nonLiquidatablePositions.find(
+          (p) =>
+            p.user.address === position.user.address &&
+            p.market.loanAsset.address === position.market.loanAsset.address &&
+            p.market.collateralAsset?.address ===
+              position.market.collateralAsset?.address
+        );
+
+        if (!nonLiquidatable) continue;
+
+        console.info(
+          `Position details for ${nonLiquidatable?.user.address}:`,
+          `\n- Collateral Token: ${nonLiquidatable?.market.collateralAsset?.address}`,
+          `\n- Loan Token: ${nonLiquidatable?.market.loanAsset.address}`,
+          `\n- Position Borrow Shares: ${nonLiquidatable?.position.borrowShares}`,
+          `\n- Position Collateral: ${nonLiquidatable?.position.collateral}`,
+          `\n- Position Current LTV: ${nonLiquidatable?.position.currentLtv}`,
+          `\n- Market LLTV: ${nonLiquidatable?.market.lltv}`,
+          `\n- Market Total Borrow Assets: ${nonLiquidatable?.market.totalBorrowAssets}`,
+          `\n- Market Total Borrow Shares: ${nonLiquidatable?.market.totalBorrowShares}`,
+          `\n`
+        );
+      }
     }
   }
 
