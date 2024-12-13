@@ -213,8 +213,8 @@ ponder.get("/liquidatable", async (c) => {
     }
   }
 
-  // Morpho Blue API does not support Sepolia
-  if (chainId === 11155111) {
+  // Morpho Blue API only supports mainnet and base
+  if (chainId === 1 || chainId === 8453) {
     const {
       marketPositions: { items: morphoBluePositions },
     } = await apiSdk.getLiquidatablePositions({

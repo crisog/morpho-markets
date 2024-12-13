@@ -57,32 +57,32 @@ export default createConfig({
   blocks: {
     OracleUpdates: {
       network: "mainnet",
-      startBlock: 21394672,
+      startBlock: 21395378,
       interval: 1,
     },
     MarketStateUpdates: {
       network: "mainnet",
-      startBlock: 21394672,
+      startBlock: 21395378,
       interval: 1,
     },
     OracleUpdatesBase: {
       network: "base",
-      startBlock: 23611953,
+      startBlock: 23662642,
       interval: 1,
     },
     MarketStateUpdatesBase: {
       network: "base",
-      startBlock: 23611953,
+      startBlock: 23662642,
       interval: 1,
     },
     OracleUpdatesSepolia: {
       network: "sepolia",
-      startBlock: 7271747,
+      startBlock: 7271981,
       interval: 1,
     },
     MarketStateUpdatesSepolia: {
       network: "sepolia",
-      startBlock: 7271747,
+      startBlock: 7271981,
       interval: 1,
     },
   },

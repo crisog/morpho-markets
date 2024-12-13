@@ -2,7 +2,7 @@ import { ponder } from "@/generated";
 import * as schema from "../ponder.schema";
 import { MorphoAbi } from "../abis/Morpho";
 import { IOracleAbi } from "../abis/IOracle";
-import { IGNORED_ORACLES } from "./constants";
+import { IGNORED_ORACLES, MORPHO_CONTRACT_ADDRESSES } from "./constants";
 
 // Morpho (ETH Mainnet)
 ponder.on("Morpho:CreateMarket", async ({ event, context }) => {
@@ -137,7 +137,9 @@ ponder.on("MarketStateUpdates:block", async ({ event, context }) => {
   for (const market of markets) {
     try {
       const marketState = await context.client.readContract({
-        address: "0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb" as `0x${string}`,
+        address: MORPHO_CONTRACT_ADDRESSES[
+          context.network.chainId
+        ] as `0x${string}`,
         abi: MorphoAbi,
         functionName: "market",
         args: [market.id as `0x${string}`],
