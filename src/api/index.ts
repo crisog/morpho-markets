@@ -8,7 +8,12 @@ import {
   getWhitelistedMarkets,
 } from "./utils";
 import { MathLib, SharesMath } from "@morpho-org/blue-sdk";
-import { ORACLE_PRICE_SCALE, IGNORED_ORACLES } from "../constants";
+import {
+  ORACLE_PRICE_SCALE,
+  IGNORED_ORACLES,
+  CHAIN_TOKENS,
+} from "../constants";
+import { apiSdk } from "@morpho-org/blue-sdk-ethers-liquidation";
 ponder.use("/", graphql());
 ponder.use("/graphql", graphql());
 
@@ -69,6 +74,7 @@ ponder.get("/liquidatable", async (c) => {
 
   console.info(`[Liquidatable] Processing ${marketIds.length} markets`);
 
+  const nonLiquidatablePositions: LiquidatablePosition[] = [];
   const liquidatablePositions: LiquidatablePosition[] = [];
 
   for (const marketId of marketIds) {
@@ -113,60 +119,6 @@ ponder.get("/liquidatable", async (c) => {
         and(eq(positions.marketId, market.id), gt(positions.borrowShares, 0n)),
     });
 
-    // These positions show up on Morpho Blue API as liquidatable, but for us they are healthy
-    const missingPositions = [
-      {
-        user: "0xCC020c162AE6670C6F87F6bdA50fA694925663AA",
-        collateral: "0x4c9EDD5852cd905f086C759E8383e09bff1E68B3",
-        loan: "0x6B175474E89094C44Da98b954EedeAC495271d0F",
-      },
-      {
-        user: "0x71D30d13C8AC4Da640CC27c7c51EF717fBF6Ee70",
-        collateral: "0x4c9EDD5852cd905f086C759E8383e09bff1E68B3",
-        loan: "0x6B175474E89094C44Da98b954EedeAC495271d0F",
-      },
-      {
-        user: "0x5B6a25010A1740179eFd8756bBAbC8131D73a4Cb",
-        collateral: "0x4c9EDD5852cd905f086C759E8383e09bff1E68B3",
-        loan: "0x6B175474E89094C44Da98b954EedeAC495271d0F",
-      },
-      {
-        user: "0x52aEa9154F3F74B3cFEcd7D4Bc8f27414b6BeF73",
-        collateral: "0x4c9EDD5852cd905f086C759E8383e09bff1E68B3",
-        loan: "0x6B175474E89094C44Da98b954EedeAC495271d0F",
-      },
-      {
-        user: "0xC6F324f6CFEfafbf96C8072463521940b85DcfF4",
-        collateral: "0x4c9EDD5852cd905f086C759E8383e09bff1E68B3",
-        loan: "0x6B175474E89094C44Da98b954EedeAC495271d0F",
-      },
-      {
-        user: "0xE482F04253E7B45fB69064E99dCf36A723c27D1F",
-        collateral: "0x35D8949372D46B7a3D5A56006AE77B215fc69bC0",
-        loan: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-      },
-      {
-        user: "0x7BdFd77330510EA6a012bD595989DF7015fFC6c3",
-        collateral: "0x35D8949372D46B7a3D5A56006AE77B215fc69bC0",
-        loan: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-      },
-      {
-        user: "0xCEB76DB7beDb581e0CD2Bb7d3E3f3f4EC0D6c3A5",
-        collateral: "0x35D8949372D46B7a3D5A56006AE77B215fc69bC0",
-        loan: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-      },
-      {
-        user: "0xdc5118E4f80DA892e33d78A3EFbe58fa53132F2d",
-        collateral: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
-        loan: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-      },
-      {
-        user: "0xb6Bf87251dA39f108c5717f1c1Ba38D0702fD618",
-        collateral: "0x8236a87084f8B84306f72007F36F2618A5634494",
-        loan: "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599",
-      },
-    ];
-
     for (const position of positions) {
       if (position.collateral == 0n) {
         console.info(
@@ -193,63 +145,36 @@ ponder.get("/liquidatable", async (c) => {
       const isLiquidatable = borrowed > maxBorrow;
       const currentLtv = MathLib.wDivUp(borrowed, collateralValueInLoanAssets);
 
-      if (
-        missingPositions.some(
-          (pos) =>
-            pos.user === position.borrower &&
-            pos.loan === market.loanToken &&
-            pos.collateral === market.collateralToken
-        )
-      ) {
-        console.info(
-          `\nDebug Missing Position:`,
-          JSON.stringify(
-            {
-              user: position.borrower,
-              market: market.id,
-              oracle: market.oracle,
-              collateral: position.collateral.toString(),
-              borrowShares: position.borrowShares.toString(),
-              borrowed: borrowed.toString(),
-              currentLtv: currentLtv.toString(),
-              lltv: market.lltv.toString(),
-              isLiquidatable: isLiquidatable,
-              oraclePrice: latestPrice.price.toString(),
-              marketTotalBorrowAssets: market.totalBorrowAssets.toString(),
-              marketTotalBorrowShares: market.totalBorrowShares.toString(),
-            },
-            null,
-            2
-          )
-        );
-      }
+      const positionData = {
+        user: {
+          address: position.borrower,
+        },
+        market: {
+          id: market.id,
+          oracleAddress: market.oracle,
+          irmAddress: market.irm,
+          lltv: market.lltv.toString(),
+          totalBorrowAssets: market.totalBorrowAssets.toString(),
+          totalBorrowShares: market.totalBorrowShares.toString(),
+          oraclePrice: latestPrice.price.toString(),
+          collateralAsset: {
+            address: market.collateralToken,
+          },
+          loanAsset: {
+            address: market.loanToken,
+          },
+        },
+        position: {
+          collateral: position.collateral.toString(),
+          borrowShares: position.borrowShares.toString(),
+          currentLtv: currentLtv.toString(),
+        },
+      };
 
       if (isLiquidatable) {
-        liquidatablePositions.push({
-          user: {
-            address: position.borrower,
-          },
-          market: {
-            id: market.id,
-            oracleAddress: market.oracle,
-            irmAddress: market.irm,
-            lltv: market.lltv.toString(),
-            totalBorrowAssets: market.totalBorrowAssets.toString(),
-            totalBorrowShares: market.totalBorrowShares.toString(),
-            oraclePrice: latestPrice.price.toString(),
-            collateralAsset: {
-              address: market.collateralToken,
-            },
-            loanAsset: {
-              address: market.loanToken,
-            },
-          },
-          position: {
-            collateral: position.collateral.toString(),
-            borrowShares: position.borrowShares.toString(),
-            currentLtv: currentLtv.toString(),
-          },
-        });
+        liquidatablePositions.push(positionData);
+      } else {
+        nonLiquidatablePositions.push(positionData);
       }
     }
   }
@@ -285,6 +210,57 @@ ponder.get("/liquidatable", async (c) => {
           priceUsd: loanInfo.price,
         };
       }
+    }
+  }
+
+  const {
+    marketPositions: { items: morphoBluePositions },
+  } = await apiSdk.getLiquidatablePositions({
+    chainId,
+    wNative: CHAIN_TOKENS[chainId as keyof typeof CHAIN_TOKENS].WETH,
+    marketIds,
+  });
+
+  // These positions show up on Morpho Blue API as liquidatable, but for us they are healthy
+  const missingPositions = morphoBluePositions?.filter(
+    (position) =>
+      !liquidatablePositions.some(
+        (p) =>
+          p.user.address === position.user.address &&
+          p.market.loanAsset.address === position.market.loanAsset.address &&
+          p.market.collateralAsset?.address ===
+            position.market.collateralAsset?.address
+      )
+  );
+
+  if (missingPositions?.length) {
+    console.info(
+      `Found ${missingPositions.length} missing positions in Morpho Blue API`
+    );
+
+    for (const position of missingPositions) {
+      const nonLiquidatable = nonLiquidatablePositions.find(
+        (p) =>
+          p.user.address === position.user.address &&
+          p.market.loanAsset.address === position.market.loanAsset.address &&
+          p.market.collateralAsset?.address ===
+            position.market.collateralAsset?.address
+      );
+
+      if (!nonLiquidatable) continue;
+
+      console.info(
+        `Position details for ${nonLiquidatable?.user.address}:`,
+        `\n- Collateral Token: ${nonLiquidatable?.market.collateralAsset?.address}`,
+        `\n- Loan Token: ${nonLiquidatable?.market.loanAsset.address}`,
+        `\n- Position Borrow Shares: ${nonLiquidatable?.position.borrowShares}`,
+        `\n- Position Collateral: ${nonLiquidatable?.position.collateral}`,
+        `\n- Position Current LTV: ${nonLiquidatable?.position.currentLtv}`,
+        `\n- Market LLTV: ${nonLiquidatable?.market.lltv}`,
+        `\n- Market Total Borrow Assets: ${nonLiquidatable?.market.totalBorrowAssets}`,
+        `\n- Market Total Borrow Shares: ${nonLiquidatable?.market.totalBorrowShares}`,
+        `\n`
+      );
     }
   }
 
