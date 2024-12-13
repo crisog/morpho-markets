@@ -113,6 +113,60 @@ ponder.get("/liquidatable", async (c) => {
         and(eq(positions.marketId, market.id), gt(positions.borrowShares, 0n)),
     });
 
+    // These positions show up on Morpho Blue API as liquidatable, but for us they are healthy
+    const missingPositions = [
+      {
+        user: "0xCC020c162AE6670C6F87F6bdA50fA694925663AA",
+        collateral: "0x4c9EDD5852cd905f086C759E8383e09bff1E68B3",
+        loan: "0x6B175474E89094C44Da98b954EedeAC495271d0F",
+      },
+      {
+        user: "0x71D30d13C8AC4Da640CC27c7c51EF717fBF6Ee70",
+        collateral: "0x4c9EDD5852cd905f086C759E8383e09bff1E68B3",
+        loan: "0x6B175474E89094C44Da98b954EedeAC495271d0F",
+      },
+      {
+        user: "0x5B6a25010A1740179eFd8756bBAbC8131D73a4Cb",
+        collateral: "0x4c9EDD5852cd905f086C759E8383e09bff1E68B3",
+        loan: "0x6B175474E89094C44Da98b954EedeAC495271d0F",
+      },
+      {
+        user: "0x52aEa9154F3F74B3cFEcd7D4Bc8f27414b6BeF73",
+        collateral: "0x4c9EDD5852cd905f086C759E8383e09bff1E68B3",
+        loan: "0x6B175474E89094C44Da98b954EedeAC495271d0F",
+      },
+      {
+        user: "0xC6F324f6CFEfafbf96C8072463521940b85DcfF4",
+        collateral: "0x4c9EDD5852cd905f086C759E8383e09bff1E68B3",
+        loan: "0x6B175474E89094C44Da98b954EedeAC495271d0F",
+      },
+      {
+        user: "0xE482F04253E7B45fB69064E99dCf36A723c27D1F",
+        collateral: "0x35D8949372D46B7a3D5A56006AE77B215fc69bC0",
+        loan: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      },
+      {
+        user: "0x7BdFd77330510EA6a012bD595989DF7015fFC6c3",
+        collateral: "0x35D8949372D46B7a3D5A56006AE77B215fc69bC0",
+        loan: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      },
+      {
+        user: "0xCEB76DB7beDb581e0CD2Bb7d3E3f3f4EC0D6c3A5",
+        collateral: "0x35D8949372D46B7a3D5A56006AE77B215fc69bC0",
+        loan: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      },
+      {
+        user: "0xdc5118E4f80DA892e33d78A3EFbe58fa53132F2d",
+        collateral: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        loan: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      },
+      {
+        user: "0xb6Bf87251dA39f108c5717f1c1Ba38D0702fD618",
+        collateral: "0x8236a87084f8B84306f72007F36F2618A5634494",
+        loan: "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599",
+      },
+    ];
+
     for (const position of positions) {
       if (position.collateral == 0n) {
         console.info(
@@ -138,6 +192,37 @@ ponder.get("/liquidatable", async (c) => {
       );
       const isLiquidatable = borrowed > maxBorrow;
       const currentLtv = MathLib.wDivUp(borrowed, collateralValueInLoanAssets);
+
+      if (
+        missingPositions.some(
+          (pos) =>
+            pos.user === position.borrower &&
+            pos.loan === market.loanToken &&
+            pos.collateral === market.collateralToken
+        )
+      ) {
+        console.info(
+          `\nDebug Missing Position:`,
+          JSON.stringify(
+            {
+              user: position.borrower,
+              market: market.id,
+              oracle: market.oracle,
+              collateral: position.collateral.toString(),
+              borrowShares: position.borrowShares.toString(),
+              borrowed: borrowed.toString(),
+              currentLtv: currentLtv.toString(),
+              lltv: market.lltv.toString(),
+              isLiquidatable: isLiquidatable,
+              oraclePrice: latestPrice.price.toString(),
+              marketTotalBorrowAssets: market.totalBorrowAssets.toString(),
+              marketTotalBorrowShares: market.totalBorrowShares.toString(),
+            },
+            null,
+            2
+          )
+        );
+      }
 
       if (isLiquidatable) {
         liquidatablePositions.push({
@@ -180,9 +265,8 @@ ponder.get("/liquidatable", async (c) => {
 
     for (const position of liquidatablePositions) {
       const collateralInfo =
-        tokenPrices[position.market.collateralAsset.address.toLowerCase()];
-      const loanInfo =
-        tokenPrices[position.market.loanAsset.address.toLowerCase()];
+        tokenPrices[position.market.collateralAsset.address];
+      const loanInfo = tokenPrices[position.market.loanAsset.address];
 
       if (collateralInfo) {
         position.market.collateralAsset = {
