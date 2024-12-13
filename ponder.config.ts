@@ -77,12 +77,12 @@ export default createConfig({
     },
     OracleUpdatesSepolia: {
       network: "sepolia",
-      startBlock: 7268002,
+      startBlock: 7271747,
       interval: 1,
     },
     MarketStateUpdatesSepolia: {
       network: "sepolia",
-      startBlock: 7268002,
+      startBlock: 7271747,
       interval: 1,
     },
   },
