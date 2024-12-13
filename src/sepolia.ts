@@ -4,7 +4,7 @@ import { MorphoAbi } from "../abis/Morpho";
 import { IOracleAbi } from "../abis/IOracle";
 import { IGNORED_ORACLES } from "./constants";
 
-// Morpho (ETH Mainnet)
+// Morpho (ETH Sepolia)
 ponder.on("MorphoSepolia:CreateMarket", async ({ event, context }) => {
   const { db } = context;
 
