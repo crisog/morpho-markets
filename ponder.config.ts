@@ -24,6 +24,15 @@ export default createConfig({
         }
       ),
     },
+    sepolia: {
+      chainId: 11155111,
+      transport: rateLimit(
+        http(process.env.SEPOLIA_RPC_URL, { retryCount: 1, timeout: 1_000 }),
+        {
+          requestsPerSecond: 10,
+        }
+      ),
+    },
   },
   contracts: {
     Morpho: {
@@ -38,6 +47,12 @@ export default createConfig({
       startBlock: 13977148,
       address: "0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb",
     },
+    MorphoSepolia: {
+      network: "sepolia",
+      abi: MorphoAbi,
+      startBlock: 7265150,
+      address: "0xd011EE229E7459ba1ddd22631eF7bF528d424A14",
+    },
   },
   blocks: {
     OracleUpdates: {
@@ -48,6 +63,11 @@ export default createConfig({
     OracleUpdatesBase: {
       network: "base",
       startBlock: 23611953,
+      interval: 1,
+    },
+    OracleUpdatesSepolia: {
+      network: "sepolia",
+      startBlock: 7267489,
       interval: 1,
     },
   },

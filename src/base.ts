@@ -145,3 +145,46 @@ ponder.on("OracleUpdatesBase:block", async ({ event, context }) => {
     }
   }
 });
+
+ponder.on("MorphoBase:Liquidate", async ({ event, context }) => {
+  const { db } = context;
+
+  await db
+    .insert(schema.positions)
+    .values({
+      marketId: event.args.id,
+      borrower: event.args.borrower,
+      borrowShares: 0n,
+      collateral: 0n,
+    })
+    .onConflictDoUpdate((position) => ({
+      borrowShares:
+        position.borrowShares -
+        event.args.repaidShares -
+        event.args.badDebtShares,
+      collateral: position.collateral - event.args.seizedAssets,
+    }));
+
+  const market = await db.find(schema.markets, {
+    id: event.args.id,
+    chainId: context.network.chainId,
+  });
+  if (!market)
+    throw new Error(`Market ${event.args.id} not found during liquidation`);
+
+  await db
+    .update(schema.markets, {
+      id: event.args.id,
+      chainId: context.network.chainId,
+    })
+    .set({
+      totalBorrowAssets:
+        market.totalBorrowAssets -
+        event.args.repaidAssets -
+        event.args.badDebtAssets,
+      totalBorrowShares:
+        market.totalBorrowShares -
+        event.args.repaidShares -
+        event.args.badDebtShares,
+    });
+});

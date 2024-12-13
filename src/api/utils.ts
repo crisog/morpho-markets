@@ -1,8 +1,8 @@
-import { createPublicClient, http } from "viem";
-import { mainnet } from "viem/chains";
+import { Chain, createPublicClient, http } from "viem";
+import { mainnet, sepolia, base } from "viem/chains";
 import NodeCache from "node-cache";
 import { apiSdk } from "@morpho-org/blue-sdk-ethers-liquidation";
-import { CONFIG, IGNORED_TOKENS } from "../constants";
+import { CONFIG, IGNORED_TOKENS, CHAIN_TOKENS } from "../constants";
 
 const caches = {
   tokenInfo: new NodeCache({ stdTTL: 24 * 60 * 60, checkperiod: 60 * 60 }), // 24h TTL, 1h check
@@ -23,10 +23,26 @@ interface TokenInfo {
   symbol: string;
 }
 
-const publicClient = createPublicClient({
-  chain: mainnet,
-  transport: http(process.env.ETH_RPC_URL),
-});
+function getPublicClient(chainId: number) {
+  const chain = getChainConfig(chainId);
+  return createPublicClient({
+    chain,
+    transport: http(process.env.ETH_RPC_URL),
+  });
+}
+
+function getChainConfig(chainId: number): Chain {
+  switch (chainId) {
+    case 1:
+      return mainnet;
+    case 11155111:
+      return sepolia;
+    case 8453:
+      return base;
+    default:
+      throw new Error(`Unsupported chain ID: ${chainId}`);
+  }
+}
 
 const tokenAbi = [
   {
@@ -44,10 +60,13 @@ const tokenAbi = [
   },
 ] as const;
 
-async function fetchTokenPrice(tokenAddress: string): Promise<number> {
+async function fetchTokenPrice(
+  tokenAddress: string,
+  chainId: number
+): Promise<number> {
   if (IGNORED_TOKENS.includes(tokenAddress)) return 0;
 
-  const cacheKey = `price_${tokenAddress.toLowerCase()}`;
+  const cacheKey = `price_${chainId}_${tokenAddress.toLowerCase()}`;
   const cachedPrice = caches.prices.get<number>(cacheKey);
   if (cachedPrice !== undefined) return cachedPrice;
 
@@ -81,14 +100,18 @@ async function fetchTokenPrice(tokenAddress: string): Promise<number> {
   }
 }
 
-async function fetchTokenInfo(tokenAddress: string): Promise<TokenInfo> {
+async function fetchTokenInfo(
+  tokenAddress: string,
+  chainId: number
+): Promise<TokenInfo> {
   if (IGNORED_TOKENS.includes(tokenAddress)) return { decimals: 0, symbol: "" };
 
-  const cacheKey = `info_${tokenAddress.toLowerCase()}`;
+  const cacheKey = `info_${chainId}_${tokenAddress.toLowerCase()}`;
   const cachedInfo = caches.tokenInfo.get<TokenInfo>(cacheKey);
   if (cachedInfo) return cachedInfo;
 
   try {
+    const publicClient = getPublicClient(chainId);
     const [decimals, symbol] = await Promise.all([
       publicClient.readContract({
         address: tokenAddress as `0x${string}`,
@@ -116,7 +139,8 @@ async function fetchTokenInfo(tokenAddress: string): Promise<TokenInfo> {
 }
 
 export async function getTokenPrices(
-  markets: Array<{ loanToken: string; collateralToken: string }>
+  markets: Array<{ loanToken: string; collateralToken: string }>,
+  chainId: number
 ): Promise<TokenPrices> {
   const uniqueTokens = new Set([
     ...markets.map((m) => m.loanToken.toLowerCase()),
@@ -130,8 +154,8 @@ export async function getTokenPrices(
     [...uniqueTokens].map(async (address) => {
       try {
         const [price, tokenInfo] = await Promise.all([
-          fetchTokenPrice(address),
-          fetchTokenInfo(address),
+          fetchTokenPrice(address, chainId),
+          fetchTokenInfo(address, chainId),
         ]);
 
         prices[address] = {
@@ -171,6 +195,10 @@ export async function getWhitelistedMarkets(
   }
 }
 
-export async function getWethPriceUsd(): Promise<number> {
-  return await fetchTokenPrice("0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2");
+export async function getWethPriceUsd(chainId: number): Promise<number> {
+  const wethAddress = CHAIN_TOKENS[chainId as keyof typeof CHAIN_TOKENS]?.WETH;
+  if (!wethAddress) {
+    throw new Error(`No WETH address configured for chain ${chainId}`);
+  }
+  return await fetchTokenPrice(wethAddress, chainId);
 }

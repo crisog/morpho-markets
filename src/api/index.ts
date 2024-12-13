@@ -137,7 +137,8 @@ ponder.get("/liquidatable", async (c) => {
       liquidatablePositions.map(({ market }) => ({
         loanToken: market.loanAsset.address,
         collateralToken: market.collateralAsset.address,
-      }))
+      })),
+      chainId
     );
 
     for (const position of liquidatablePositions) {
@@ -170,7 +171,7 @@ ponder.get("/liquidatable", async (c) => {
     `\nFound ${liquidatablePositions.length} liquidatable positions in total`
   );
 
-  const wethPriceUsd = await getWethPriceUsd();
+  const wethPriceUsd = await getWethPriceUsd(chainId);
 
   return c.json({
     chainId,

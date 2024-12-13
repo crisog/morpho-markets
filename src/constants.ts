@@ -19,3 +19,15 @@ export const CONFIG = {
   ORACLE_PRICE_SCALE: BigInt(1e36),
   DEFAULT_DECIMALS: 18,
 } as const;
+
+export const CHAIN_TOKENS = {
+  1: {
+    WETH: "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+  },
+  11155111: {
+    WETH: "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9",
+  },
+  8453: {
+    WETH: "0x4200000000000000000000000000000000000006",
+  },
+} as const;
