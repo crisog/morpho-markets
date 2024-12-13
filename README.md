@@ -35,6 +35,20 @@ yarn codegen
 yarn start
 ```
 
-## Reading the data
+## Liquidatable Positions Endpoint
+
+The tracked liquidatable positions are being exposed at:
+
+`http://localhost:42069/liquidatable?chainId=1` (defaults to `1`)
+
+### Query Parameters
+
+- **`chainId`**  
+  Allowed values:
+  - `1` (Ethereum Mainnet)
+  - `11155111` (Ethereum Sepolia)
+  - `8453` (Base Mainnet)
+
+## Reading the indexed data
 
 While the indexer is running, it will expose a GraphQL server at http://localhost:42069
